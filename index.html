@@ -420,6 +420,20 @@
       line-height: 1;
     }
     .game-score-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; text-align: right; }
+    .btn-game-back {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+      color: rgba(255,255,255,0.7);
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
     .word-bar-wrap { width: 100%; padding: 0 24px; flex-shrink: 0; }
     .word-bar-bg {
       height: 7px;
@@ -695,7 +709,8 @@
   <div class="game-feedback-text" id="gfeedback"></div>
 
   <div class="game-top">
-    <div>
+    <button class="btn-game-back" onclick="nav('home')">←</button>
+    <div style="text-align:center">
       <div class="game-timer-val" id="g-time">4:00</div>
       <div class="game-timer-label">Time Left</div>
     </div>
