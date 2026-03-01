@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Charades!</title>
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --card: #1e293b;
+      --blue: #3b82f6;
+      --blue-light: #93c5fd;
+      --red: #ef4444;
+      --red-light: #fca5a5;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+    height: 100dvh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      flex-direction: column;
+      align-items: center;
+    }
+    .screen.active { display: flex; }
+
+    /* ── HOME ── */
+    #screen-home {
+      background: linear-gradient(160deg, #0a0e1a 0%, #1a1040 100%);
+    }
+    .home-header {
+      width: 100%;
+      padding: 56px 24px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .home-title {
+      font-size: 44px;
+      font-weight: 900;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1;
+    }
+    .home-subtitle { font-size: 15px; color: var(--muted); margin-top: 6px; }
+    .btn-admin {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      margin-left: 12px;
+      margin-top: 4px;
+    }
+    .categories-list {
+      width: 100%;
+      padding: 8px 24px 40px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .category-card {
+      position: relative;
+      background: var(--card);
+      border-radius: 20px;
+      padding: 20px 20px 20px 26px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.12s, border-color 0.12s;
+      overflow: hidden;
+    }
+    .category-card:active { transform: scale(0.97); border-color: var(--blue); }
+    .card-stripe {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 6px;
+      border-radius: 20px 0 0 20px;
+    }
+    .category-card .name { font-size: 20px; font-weight: 700; }
+    .category-card .count { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .category-card-arrow { font-size: 22px; opacity: 0.35; }
+    .empty-state {
+      text-align: center;
+      padding: 60px 24px;
+      color: var(--muted);
+    }
+    .empty-state .icon { font-size: 64px; margin-bottom: 16px; }
+    .empty-state p { font-size: 17px; line-height: 1.5; margin-bottom: 24px; }
+    .btn-go-admin {
+      background: var(--blue);
+      border: none;
+      color: white;
+      padding: 14px 28px;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* ── ADMIN ── */
+    #screen-admin { background: var(--bg); }
+    .admin-header {
+      width: 100%;
+      padding: 56px 24px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .admin-title { font-size: 28px; font-weight: 800; }
+    .btn-back {
+      background: rgba(255,255,255,0.08);
+      border: none;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .admin-content {
+      width: 100%;
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 0 24px 100px;
+    }
+    .admin-add-btn {
+      width: 100%;
+      background: var(--blue);
+      border: none;
+      color: white;
+      padding: 16px;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+    .admin-cat {
+      background: var(--card);
+      border-radius: 20px;
+      margin-bottom: 14px;
+      overflow: hidden;
+    }
+    .admin-cat-header {
+      display: flex;
+      align-items: center;
+      padding: 16px 18px;
+      gap: 10px;
+      cursor: pointer;
+    }
+    .admin-cat-name { flex: 1; font-size: 17px; font-weight: 700; }
+    .admin-cat-count { font-size: 12px; color: var(--muted); }
+    .admin-cat-chevron {
+      font-size: 18px;
+      opacity: 0.4;
+      transition: transform 0.2s;
+    }
+    .admin-cat.open .admin-cat-chevron { transform: rotate(180deg); }
+    .admin-cat-body { display: none; padding: 0 18px 16px; }
+    .admin-cat.open .admin-cat-body { display: block; }
+    .admin-word-row {
+      display: flex;
+      align-items: center;
+      padding: 10px 0;
+      gap: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .admin-word-text { flex: 1; font-size: 15px; }
+    .btn-del-word {
+      background: rgba(239,68,68,0.15);
+      border: none;
+      color: var(--red);
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .admin-body-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .btn-add-word {
+      flex: 1;
+      background: rgba(59,130,246,0.15);
+      border: 1px solid rgba(59,130,246,0.25);
+      color: var(--blue-light);
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-rename-cat {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: var(--muted);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .btn-del-cat {
+      background: rgba(239,68,68,0.15);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: var(--red);
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .admin-edit-icon {
+      background: none;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      opacity: 0.5;
+    }
+
+    /* ── SETTINGS CARD ── */
+    .settings-card {
+      background: var(--card);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .settings-card-title {
+      font-size: 13px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .stepper-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+    }
+    .stepper-row + .stepper-row {
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .stepper-name { font-size: 16px; font-weight: 700; }
+    .stepper-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+    .stepper-ctrl {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-shrink: 0;
+    }
+    .btn-step {
+      width: 36px;
+      height: 36px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      color: white;
+      font-size: 22px;
+      font-weight: 300;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .btn-step:active { background: rgba(255,255,255,0.2); }
+    .btn-step:disabled { opacity: 0.25; cursor: default; }
+    .stepper-val {
+      font-size: 18px;
+      font-weight: 800;
+      min-width: 68px;
+      text-align: center;
+      color: var(--blue-light);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── READY ── */
+    #screen-ready {
+      background: linear-gradient(160deg, #0f172a, #1e1b4b);
+      padding: 40px 28px;
+      text-align: center;
+      justify-content: center;
+    }
+    .ready-emoji { font-size: 72px; margin-bottom: 20px; }
+    .ready-title { font-size: 34px; font-weight: 900; margin-bottom: 8px; }
+    .ready-cat { font-size: 20px; color: var(--blue-light); font-weight: 700; margin-bottom: 32px; }
+    .tilt-box {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 32px;
+      text-align: left;
+    }
+    .tilt-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 0;
+    }
+    .tilt-row + .tilt-row { border-top: 1px solid rgba(255,255,255,0.08); }
+    .tilt-icon { font-size: 32px; width: 44px; text-align: center; }
+    .tilt-action { font-size: 15px; font-weight: 700; }
+    .tilt-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .btn-start {
+      width: 100%;
+      padding: 20px;
+      background: linear-gradient(135deg, #3b82f6, #7c3aed);
+      border: none;
+      border-radius: 20px;
+      color: white;
+      font-size: 22px;
+      font-weight: 900;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+    .btn-back-ready {
+      margin-top: 14px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 15px;
+      cursor: pointer;
+      padding: 10px;
+    }
+
+    /* ── GAME ── */
+    #screen-game {
+      background: #070b16;
+      overflow: hidden;
+    }
+    .game-flash {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.08s;
+      z-index: 10;
+    }
+    .game-flash.on { opacity: 0.25; }
+    .game-flash.blue { background: #3b82f6; }
+    .game-flash.red { background: #ef4444; }
+    .game-feedback-text {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 56px;
+      font-weight: 900;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.08s;
+      z-index: 11;
+    }
+    .game-feedback-text.on { opacity: 1; }
+    .game-feedback-text.blue { color: var(--blue-light); }
+    .game-feedback-text.red { color: var(--red-light); }
+    .game-top {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 52px 28px 12px;
+      flex-shrink: 0;
+    }
+    .game-timer-val {
+      font-size: 38px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    .game-timer-val.urgent { color: var(--red); }
+    .game-timer-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; }
+    .game-score-val {
+      font-size: 38px;
+      font-weight: 900;
+      color: var(--blue);
+      line-height: 1;
+    }
+    .game-score-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; text-align: right; }
+    .word-bar-wrap { width: 100%; padding: 0 24px; flex-shrink: 0; }
+    .word-bar-bg {
+      height: 7px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .word-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--blue);
+      transition: width 0.25s linear, background 0.4s;
+    }
+    .word-bar-fill.warn { background: #f59e0b; }
+    .word-bar-fill.danger { background: var(--red); }
+    .game-center {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 16px 28px;
+      width: 100%;
+    }
+    .game-word {
+      font-size: 52px;
+      font-weight: 900;
+      text-align: center;
+      line-height: 1.1;
+      letter-spacing: -1px;
+      width: 100%;
+    }
+    .game-word-num {
+      font-size: 88px;
+      font-weight: 900;
+      color: rgba(255,255,255,0.07);
+      margin-top: 10px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .game-bottom {
+      width: 100%;
+      display: flex;
+      gap: 10px;
+      padding: 12px 24px 36px;
+      flex-shrink: 0;
+    }
+    .btn-game-pass {
+      flex: 1;
+      padding: 16px;
+      background: rgba(239,68,68,0.12);
+      border: 2px solid rgba(239,68,68,0.3);
+      border-radius: 16px;
+      color: var(--red-light);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-game-correct {
+      flex: 1;
+      padding: 16px;
+      background: rgba(59,130,246,0.12);
+      border: 2px solid rgba(59,130,246,0.3);
+      border-radius: 16px;
+      color: var(--blue-light);
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    /* ── RESULTS ── */
+    #screen-results {
+      background: linear-gradient(160deg, #0a0e1a, #0f172a);
+    }
+    .results-header {
+      width: 100%;
+      padding: 56px 24px 24px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .results-title { font-size: 36px; font-weight: 900; }
+    .results-score { font-size: 22px; color: var(--blue-light); font-weight: 700; margin-top: 8px; }
+    .results-scroll {
+      width: 100%;
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 0 24px 120px;
+    }
+    .results-section { margin-bottom: 28px; }
+    .results-section-label {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      padding-left: 4px;
+    }
+    .results-section-label.blue { color: var(--blue-light); }
+    .results-section-label.red { color: var(--red-light); }
+    .results-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 8px 16px;
+      border-radius: 24px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .chip.blue {
+      background: rgba(59,130,246,0.18);
+      color: var(--blue-light);
+      border: 1px solid rgba(59,130,246,0.3);
+    }
+    .chip.red {
+      background: rgba(239,68,68,0.18);
+      color: var(--red-light);
+      border: 1px solid rgba(239,68,68,0.3);
+    }
+    .results-footer {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 16px 24px 40px;
+      background: linear-gradient(transparent, #0a0e1a 50%);
+    }
+    .btn-next-round {
+      width: 100%;
+      padding: 18px;
+      background: linear-gradient(135deg, #3b82f6, #7c3aed);
+      border: none;
+      border-radius: 20px;
+      color: white;
+      font-size: 18px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 999;
+      backdrop-filter: blur(4px);
+    }
+    .modal {
+      background: #1e293b;
+      border-radius: 24px;
+      padding: 28px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .modal-title { font-size: 21px; font-weight: 800; margin-bottom: 18px; }
+    .modal-body { color: var(--muted); font-size: 15px; line-height: 1.5; margin-bottom: 22px; }
+    .modal-label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    .modal-input {
+      width: 100%;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 14px;
+      padding: 14px 16px;
+      color: white;
+      font-size: 16px;
+      outline: none;
+      margin-bottom: 18px;
+    }
+    .modal-input:focus { border-color: var(--blue); }
+    .modal-input::placeholder { color: #4b5563; }
+    .modal-btns { display: flex; gap: 10px; }
+    .btn-mcancel {
+      flex: 1;
+      padding: 14px;
+      background: rgba(255,255,255,0.08);
+      border: none;
+      border-radius: 14px;
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-mconfirm {
+      flex: 1;
+      padding: 14px;
+      background: var(--blue);
+      border: none;
+      border-radius: 14px;
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .btn-mconfirm.danger { background: var(--red); }
+
+    /* ── LANDSCAPE WALL ── */
+    .landscape-wall {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #0a0e1a;
+      z-index: 99999;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+    }
+    .landscape-wall-icon { font-size: 56px; margin-bottom: 20px; }
+    .landscape-wall-title { font-size: 24px; font-weight: 900; margin-bottom: 8px; }
+    .landscape-wall-sub { font-size: 15px; color: var(--muted); }
+    @media (orientation: landscape) and (max-height: 500px) {
+      .landscape-wall { display: flex; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════ HOME ═══════════ -->
+<div id="screen-home" class="screen active">
+  <div class="home-header">
+    <div>
+      <div class="home-title">CHARADES!</div>
+      <div class="home-subtitle">Pick a category to start</div>
+    </div>
+    <button class="btn-admin" onclick="nav('admin')">⚙ Admin</button>
+  </div>
+  <div class="categories-list" id="home-list"></div>
+</div>
+
+<!-- ═══════════ ADMIN ═══════════ -->
+<div id="screen-admin" class="screen">
+  <div class="admin-header">
+    <div class="admin-title">⚙ Admin</div>
+    <button class="btn-back" onclick="nav('home')">← Back</button>
+  </div>
+  <div class="admin-content">
+    <div id="admin-settings"></div>
+    <button class="admin-add-btn" onclick="modalAddCategory()">+ New Category</button>
+    <div id="admin-list"></div>
+  </div>
+</div>
+
+<!-- ═══════════ READY ═══════════ -->
+<div id="screen-ready" class="screen">
+  <div class="ready-emoji">🎭</div>
+  <div class="ready-title">Ready?</div>
+  <div class="ready-cat" id="ready-cat-name">Category</div>
+  <div id="ready-timers" style="font-size:13px;color:var(--muted);margin-top:-24px;margin-bottom:28px;letter-spacing:0.5px;">15s per word &bull; 4 min round</div>
+  <div class="tilt-box">
+    <div class="tilt-row">
+      <div class="tilt-icon">⬇️</div>
+      <div>
+        <div class="tilt-action" style="color:var(--blue-light)">TILT DOWN = CORRECT</div>
+        <div class="tilt-sub">They got it! Next word loads.</div>
+      </div>
+    </div>
+    <div class="tilt-row">
+      <div class="tilt-icon">⬆️</div>
+      <div>
+        <div class="tilt-action" style="color:var(--red-light)">TILT UP = SKIP</div>
+        <div class="tilt-sub">Pass — moves to the next word.</div>
+      </div>
+    </div>
+  </div>
+  <button class="btn-start" id="btn-start-game" onclick="startGame()">▶ START</button>
+  <button class="btn-back-ready" onclick="nav('home')">← Choose a different category</button>
+</div>
+
+<!-- ═══════════ GAME ═══════════ -->
+<div id="screen-game" class="screen">
+  <div class="game-flash" id="gflash"></div>
+  <div class="game-feedback-text" id="gfeedback"></div>
+
+  <div class="game-top">
+    <div>
+      <div class="game-timer-val" id="g-time">4:00</div>
+      <div class="game-timer-label">Time Left</div>
+    </div>
+    <div style="text-align:right">
+      <div class="game-score-val" id="g-score">0</div>
+      <div class="game-score-label">Points</div>
+    </div>
+  </div>
+
+  <div class="word-bar-wrap">
+    <div class="word-bar-bg">
+      <div class="word-bar-fill" id="word-bar" style="width:100%"></div>
+    </div>
+  </div>
+
+  <div class="game-center">
+    <div class="game-word" id="g-word">—</div>
+    <div class="game-word-num" id="g-wnum">15</div>
+  </div>
+
+  <div class="game-bottom">
+    <button class="btn-game-pass" onclick="doPass()">✗ SKIP</button>
+    <button class="btn-game-correct" onclick="doCorrect()">✓ GOT IT</button>
+  </div>
+</div>
+
+<!-- ═══════════ RESULTS ═══════════ -->
+<div id="screen-results" class="screen">
+  <div class="results-header">
+    <div class="results-title">⏱ Time's Up!</div>
+    <div class="results-score" id="res-score">0 points</div>
+  </div>
+  <div class="results-scroll">
+    <div class="results-section">
+      <div class="results-section-label blue">✓ Got It</div>
+      <div class="results-chips" id="res-correct"></div>
+    </div>
+    <div class="results-section">
+      <div class="results-section-label red">✗ Missed</div>
+      <div class="results-chips" id="res-missed"></div>
+    </div>
+  </div>
+  <div class="results-footer">
+    <button class="btn-next-round" onclick="nav('home')">Next Round →</button>
+  </div>
+</div>
+
+<!-- ═══════════ LANDSCAPE WALL ═══════════ -->
+<div class="landscape-wall">
+  <div class="landscape-wall-icon">📱</div>
+  <div class="landscape-wall-title">Rotate Your Phone</div>
+  <div class="landscape-wall-sub">This game works best in portrait mode</div>
+</div>
+
+<!-- ═══════════ MODAL ═══════════ -->
+<div id="modal-wrap" style="display:none" onclick="modalBgClick(event)">
+  <div class="modal-overlay">
+    <div class="modal" id="modal-box" onclick="event.stopPropagation()"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+// DATA — saved to localStorage + bundled defaults
+// ════════════════════════════════════════
+const DEFAULTS = [
+  {
+    id: 'cat-movies', name: "🎬 Movies",
+    words: ["The Lion King","Avatar","Titanic","Star Wars","Jurassic Park",
+            "Home Alone","The Matrix","Forrest Gump","The Godfather","Shrek",
+            "Finding Nemo","Toy Story","The Dark Knight","Grease","Top Gun"]
+  },
+  {
+    id: 'cat-90s', name: "🪩 I Love the 90's",
+    words: ["Spice Girls","Tamagotchi","The Fresh Prince","Friends","Furby",
+            "TRL","AOL Instant Messenger","Titanic","Backstreet Boys","NSYNC",
+            "Beanie Babies","Power Rangers","Saved by the Bell","Nirvana","Pogs"]
+  },
+  {
+    id: 'cat-2000s', name: "📼 I Love the 2000's",
+    words: ["MySpace","iPod","Twilight","Mean Girls","The Office","Lost",
+            "Britney Spears","Eminem","Borat","Spider-Man","The Sims",
+            "Grey's Anatomy","American Idol","Shrek 2","Legally Blonde"]
+  },
+  {
+    id: 'cat-buffy', name: "🧛 Buffy",
+    words: ["Buffy Summers","Angel","Spike","Willow Rosenberg","Xander Harris",
+            "Giles","The Hellmouth","Sunnydale","The Master","Drusilla",
+            "Cordelia Chase","Oz","The Bronze","Faith","Anya Jenkins"]
+  },
+  {
+    id: 'cat-dina', name: "✨ Dina",
+    words: ["Buffy","Binghamton","New South Wales","Shira","Oreo Truffle",
+            "Considerate","Cooked Fruit","Barbie","Pogs","Cinderella",
+            "MPH","Organizing Photos","Spreadsheet Queen","One Tree Hill"]
+  },
+  {
+    id: 'cat-disney', name: "🏰 Disney",
+    words: [
+      "Mickey Mouse","Cinderella","The Lion King","Frozen","Finding Nemo",
+      "Snow White","Dumbo","Winnie the Pooh","Aladdin","The Little Mermaid",
+      "Sleeping Beauty","Beauty and the Beast","Toy Story","Pinocchio",
+      "Bambi","Peter Pan","Moana","Tangled","Tinker Bell","The Jungle Book"
+    ]
+  },
+  {
+    id: 'cat-actions', name: "🎭 Actions & Emotions",
+    words: ["Swimming","Laughing","Crying","Dancing","Sleeping","Eating spaghetti",
+            "Riding a horse","Playing guitar","Taking a selfie","Running a marathon",
+            "Brushing teeth","Falling in love","Winning the lottery","Getting a haircut",
+            "Walking a tightrope"]
+  }
+];
+
+const CARD_GRADIENTS = [
+  ['#3b82f6','#6366f1'],
+  ['#8b5cf6','#ec4899'],
+  ['#f59e0b','#ef4444'],
+  ['#10b981','#3b82f6'],
+  ['#ef4444','#f97316'],
+  ['#6366f1','#8b5cf6'],
+  ['#ec4899','#f59e0b'],
+  ['#0ea5e9','#10b981'],
+];
+
+let categories = [];
+
+// settings: gameSecs (30s–10min), wordSecs (5–30s)
+let settings = { gameSecs: 60, wordSecs: 10 };
+
+const WORD_SECS_OPTIONS = [5, 10, 15, 20, 25, 30];
+const GAME_SECS_OPTIONS = [30, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600];
+
+function fmtDuration(secs) {
+  if (secs < 60) return secs + ' sec';
+  return (secs / 60) + ' min';
+}
+
+function loadData() {
+  try {
+    const raw = localStorage.getItem('charades-v3');
+    if (raw) categories = JSON.parse(raw);
+  } catch(e) {}
+  if (!categories || categories.length === 0) {
+    categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
+    saveData();
+  }
+  try {
+    const rs = localStorage.getItem('charades-settings');
+    if (rs) settings = { ...settings, ...JSON.parse(rs) };
+  } catch(e) {}
+}
+
+function saveData() {
+  try { localStorage.setItem('charades-v3', JSON.stringify(categories)); } catch(e) {}
+}
+
+function saveSettings() {
+  try { localStorage.setItem('charades-settings', JSON.stringify(settings)); } catch(e) {}
+}
+
+function uid() {
+  return 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+// ════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════
+function nav(screen) {
+  // Stop game if navigating away
+  if (screen !== 'game' && gameState.active) stopGame(false);
+
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + screen).classList.add('active');
+
+  if (screen === 'home') renderHome();
+  if (screen === 'admin') renderAdmin();
+}
+
+// ════════════════════════════════════════
+// HOME
+// ════════════════════════════════════════
+function renderHome() {
+  const el = document.getElementById('home-list');
+  if (categories.length === 0) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">🎭</div>
+        <p>No categories yet.<br>Head to Admin to add some!</p>
+        <button class="btn-go-admin" onclick="nav('admin')">⚙ Go to Admin</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = categories.map((cat, i) => {
+    const [c1, c2] = CARD_GRADIENTS[i % CARD_GRADIENTS.length];
+    const n = cat.words.length;
+    return `
+      <div class="category-card" onclick="selectCategory('${cat.id}')">
+        <div class="card-stripe" style="background:linear-gradient(180deg,${c1},${c2})"></div>
+        <div>
+          <div class="name">${esc(cat.name)}</div>
+          <div class="count">${n} word${n !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="category-card-arrow">▶</div>
+      </div>`;
+  }).join('');
+}
+
+let currentCatId = null;
+
+function selectCategory(id) {
+  const cat = categories.find(c => c.id === id);
+  if (!cat) return;
+  if (cat.words.length === 0) {
+    alert('This category has no words. Add some in Admin first!');
+    return;
+  }
+  currentCatId = id;
+  document.getElementById('ready-cat-name').textContent = cat.name;
+  document.getElementById('ready-timers').textContent =
+    `${settings.wordSecs}s per word  •  ${fmtDuration(settings.gameSecs)} round`;
+  nav('ready');
+}
+
+// ════════════════════════════════════════
+// ADMIN — SETTINGS
+// ════════════════════════════════════════
+function renderAdminSettings() {
+  const gameIdx = GAME_SECS_OPTIONS.indexOf(settings.gameSecs);
+  const wordIdx = WORD_SECS_OPTIONS.indexOf(settings.wordSecs);
+  const canDecGame = gameIdx > 0;
+  const canIncGame = gameIdx < GAME_SECS_OPTIONS.length - 1;
+  const canDecWord = wordIdx > 0;
+  const canIncWord = wordIdx < WORD_SECS_OPTIONS.length - 1;
+
+  document.getElementById('admin-settings').innerHTML = `
+    <div class="settings-card">
+      <div class="settings-card-title">⏱ Timer Settings</div>
+      <div class="stepper-row">
+        <div>
+          <div class="stepper-name">Round Duration</div>
+          <div class="stepper-sub">How long each round lasts</div>
+        </div>
+        <div class="stepper-ctrl">
+          <button class="btn-step" onclick="changeGameSecs(-1)" ${canDecGame ? '' : 'disabled'}>−</button>
+          <div class="stepper-val" id="sv-game">${fmtDuration(settings.gameSecs)}</div>
+          <button class="btn-step" onclick="changeGameSecs(1)" ${canIncGame ? '' : 'disabled'}>+</button>
+        </div>
+      </div>
+      <div class="stepper-row">
+        <div>
+          <div class="stepper-name">Time Per Word</div>
+          <div class="stepper-sub">Seconds shown before auto-skip</div>
+        </div>
+        <div class="stepper-ctrl">
+          <button class="btn-step" onclick="changeWordSecs(-1)" ${canDecWord ? '' : 'disabled'}>−</button>
+          <div class="stepper-val" id="sv-word">${settings.wordSecs} sec</div>
+          <button class="btn-step" onclick="changeWordSecs(1)" ${canIncWord ? '' : 'disabled'}>+</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function changeGameSecs(delta) {
+  const idx = GAME_SECS_OPTIONS.indexOf(settings.gameSecs);
+  const newIdx = Math.min(GAME_SECS_OPTIONS.length - 1, Math.max(0, idx + delta));
+  settings.gameSecs = GAME_SECS_OPTIONS[newIdx];
+  saveSettings();
+  renderAdminSettings();
+}
+
+function changeWordSecs(delta) {
+  const idx = WORD_SECS_OPTIONS.indexOf(settings.wordSecs);
+  const newIdx = Math.min(WORD_SECS_OPTIONS.length - 1, Math.max(0, idx + delta));
+  settings.wordSecs = WORD_SECS_OPTIONS[newIdx];
+  saveSettings();
+  renderAdminSettings();
+}
+
+// ════════════════════════════════════════
+// ADMIN
+// ════════════════════════════════════════
+function renderAdmin() {
+  renderAdminSettings();
+  const el = document.getElementById('admin-list');
+  if (categories.length === 0) {
+    el.innerHTML = '<p style="color:#4b5563;text-align:center;padding:20px 0;">No categories yet.</p>';
+    return;
+  }
+  el.innerHTML = categories.map((cat, i) => `
+    <div class="admin-cat" id="acat-${cat.id}">
+      <div class="admin-cat-header" onclick="toggleCat('${cat.id}')">
+        <div class="admin-cat-name">${esc(cat.name)}</div>
+        <span class="admin-cat-count">${cat.words.length} words</span>
+        <button class="admin-edit-icon" onclick="event.stopPropagation();modalRenameCategory('${cat.id}')">✏️</button>
+        <div class="admin-cat-chevron">▾</div>
+      </div>
+      <div class="admin-cat-body">
+        ${cat.words.length === 0
+          ? '<p style="color:#4b5563;font-size:14px;padding:6px 0 10px;">No words yet.</p>'
+          : cat.words.map((w, wi) => `
+            <div class="admin-word-row">
+              <span class="admin-word-text">${esc(w)}</span>
+              <button class="btn-del-word" onclick="deleteWord('${cat.id}',${wi})">×</button>
+            </div>`).join('')
+        }
+        <div class="admin-body-actions">
+          <button class="btn-add-word" onclick="modalAddWord('${cat.id}')">+ Add Word / Phrase</button>
+          <button class="btn-rename-cat" onclick="modalRenameCategory('${cat.id}')">✏️</button>
+          <button class="btn-del-cat" onclick="modalDeleteCategory('${cat.id}')">🗑️</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function toggleCat(id) {
+  document.getElementById('acat-' + id)?.classList.toggle('open');
+}
+
+function modalAddCategory() {
+  showModal(`
+    <div class="modal-title">New Category</div>
+    <div class="modal-label">Category Name</div>
+    <input class="modal-input" id="mi" placeholder='e.g. "Dina's Fun Time"' autofocus>
+    <div class="modal-btns">
+      <button class="btn-mcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-mconfirm" onclick="confirmAddCategory()">Create</button>
+    </div>
+  `);
+  focusInput();
+}
+
+function confirmAddCategory() {
+  const name = document.getElementById('mi')?.value?.trim();
+  if (!name) return;
+  categories.push({ id: uid(), name, words: [] });
+  saveData();
+  closeModal();
+  renderAdmin();
+}
+
+function modalRenameCategory(id) {
+  const cat = categories.find(c => c.id === id);
+  if (!cat) return;
+  showModal(`
+    <div class="modal-title">Rename Category</div>
+    <div class="modal-label">New Name</div>
+    <input class="modal-input" id="mi" value="${esc(cat.name)}" autofocus>
+    <div class="modal-btns">
+      <button class="btn-mcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-mconfirm" onclick="confirmRenameCategory('${id}')">Save</button>
+    </div>
+  `);
+  focusInput();
+}
+
+function confirmRenameCategory(id) {
+  const name = document.getElementById('mi')?.value?.trim();
+  if (!name) return;
+  const cat = categories.find(c => c.id === id);
+  if (cat) { cat.name = name; saveData(); }
+  closeModal();
+  renderAdmin();
+}
+
+function modalDeleteCategory(id) {
+  const cat = categories.find(c => c.id === id);
+  showModal(`
+    <div class="modal-title">Delete "${esc(cat?.name || '')}"?</div>
+    <div class="modal-body">This will permanently remove this category and all its words.</div>
+    <div class="modal-btns">
+      <button class="btn-mcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-mconfirm danger" onclick="confirmDeleteCategory('${id}')">Delete</button>
+    </div>
+  `);
+}
+
+function confirmDeleteCategory(id) {
+  categories = categories.filter(c => c.id !== id);
+  saveData();
+  closeModal();
+  renderAdmin();
+}
+
+function modalAddWord(catId) {
+  showModal(`
+    <div class="modal-title">Add Word / Phrase</div>
+    <div class="modal-label">Word or Phrase</div>
+    <input class="modal-input" id="mi" placeholder='e.g. "The Lion King"' autofocus>
+    <div class="modal-btns">
+      <button class="btn-mcancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-mconfirm" onclick="confirmAddWord('${catId}')">Add</button>
+    </div>
+  `);
+  focusInput();
+}
+
+function confirmAddWord(catId) {
+  const word = document.getElementById('mi')?.value?.trim();
+  if (!word) return;
+  const cat = categories.find(c => c.id === catId);
+  if (cat) { cat.words.push(word); saveData(); }
+  closeModal();
+  renderAdmin();
+  setTimeout(() => {
+    const el = document.getElementById('acat-' + catId);
+    if (el) el.classList.add('open');
+  }, 40);
+}
+
+function deleteWord(catId, idx) {
+  const cat = categories.find(c => c.id === catId);
+  if (cat) { cat.words.splice(idx, 1); saveData(); }
+  renderAdmin();
+  setTimeout(() => {
+    const el = document.getElementById('acat-' + catId);
+    if (el) el.classList.add('open');
+  }, 40);
+}
+
+// ════════════════════════════════════════
+// GAME ENGINE
+// ════════════════════════════════════════
+const TILT_DELTA = 40;  // degrees for tilt trigger
+
+const gameState = {
+  active: false,
+  words: [],
+  idx: 0,
+  correct: [],
+  missed: [],
+  gameSecs: 0,
+  wordSecs: 0,
+  gameTimer: null,
+  wordTimer: null,
+  locked: false,
+  betaBase: null,
+  orientationBound: false,
+};
+
+let wakeLock = null;
+
+function startGame() {
+  const cat = categories.find(c => c.id === currentCatId);
+  if (!cat || cat.words.length === 0) return;
+
+  // Shuffle
+  gameState.words = [...cat.words].sort(() => Math.random() - 0.5);
+  gameState.idx = 0;
+  gameState.correct = [];
+  gameState.missed = [];
+  gameState.gameSecs = settings.gameSecs;
+  gameState.wordSecs = settings.wordSecs;
+  gameState.locked = false;
+  gameState.betaBase = null;
+  gameState.active = true;
+
+  nav('game');
+  requestOrientationPermission();
+  acquireWakeLock();
+  displayWord();
+  runGameTimer();
+  runWordTimer();
+}
+
+function stopGame(showResults) {
+  gameState.active = false;
+  clearInterval(gameState.gameTimer);
+  clearInterval(gameState.wordTimer);
+  if (gameState.orientationBound) {
+    window.removeEventListener('deviceorientation', onOrientation);
+    gameState.orientationBound = false;
+  }
+  releaseWakeLock();
+  if (showResults) showResultsScreen();
+}
+
+function displayWord() {
+  const w = gameState.words[gameState.idx % gameState.words.length];
+  const el = document.getElementById('g-word');
+  el.textContent = w;
+  // Adaptive font size
+  const len = w.length;
+  el.style.fontSize = len > 30 ? '28px' : len > 20 ? '36px' : len > 12 ? '44px' : '52px';
+  gameState.betaBase = null;
+  updateWordBar();
+  document.getElementById('g-wnum').textContent = settings.wordSecs;
+}
+
+function runGameTimer() {
+  clearInterval(gameState.gameTimer);
+  gameState.gameTimer = setInterval(() => {
+    if (!gameState.active) return;
+    gameState.gameSecs--;
+    updateGameTimerUI();
+    if (gameState.gameSecs <= 0) stopGame(true);
+  }, 1000);
+}
+
+function runWordTimer() {
+  clearInterval(gameState.wordTimer);
+  gameState.wordSecs = settings.wordSecs;
+  gameState.wordTimer = setInterval(() => {
+    if (!gameState.active) return;
+    gameState.wordSecs--;
+    updateWordBar();
+    if (gameState.wordSecs <= 0) doPass();
+  }, 1000);
+}
+
+function updateGameTimerUI() {
+  const m = Math.floor(gameState.gameSecs / 60);
+  const s = gameState.gameSecs % 60;
+  const el = document.getElementById('g-time');
+  el.textContent = `${m}:${String(s).padStart(2,'0')}`;
+  el.className = 'game-timer-val' + (gameState.gameSecs <= 30 ? ' urgent' : '');
+}
+
+function updateWordBar() {
+  const total = settings.wordSecs;
+  const pct = Math.max(0, (gameState.wordSecs / total) * 100);
+  const dangerAt = Math.max(1, Math.floor(total * 0.2));
+  const warnAt   = Math.max(2, Math.floor(total * 0.4));
+  const bar = document.getElementById('word-bar');
+  const num = document.getElementById('g-wnum');
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.className = 'word-bar-fill' +
+      (gameState.wordSecs <= dangerAt ? ' danger' : gameState.wordSecs <= warnAt ? ' warn' : '');
+  }
+  if (num) num.textContent = Math.max(0, gameState.wordSecs);
+}
+
+function doCorrect() {
+  if (!gameState.active || gameState.locked) return;
+  gameState.locked = true;
+  gameState.correct.push(gameState.words[gameState.idx % gameState.words.length]);
+  document.getElementById('g-score').textContent = gameState.correct.length;
+  flash('blue', '✓ Got it!');
+  advance();
+}
+
+function doPass() {
+  if (!gameState.active || gameState.locked) return;
+  gameState.locked = true;
+  gameState.missed.push(gameState.words[gameState.idx % gameState.words.length]);
+  flash('red', '✗ Skip');
+  advance();
+}
+
+function advance() {
+  clearInterval(gameState.wordTimer);
+  gameState.idx++;
+  setTimeout(() => {
+    if (!gameState.active) return;
+    gameState.locked = false;
+    displayWord();
+    runWordTimer();
+  }, 550);
+}
+
+function flash(color, msg) {
+  const f = document.getElementById('gflash');
+  const t = document.getElementById('gfeedback');
+  f.className = 'game-flash ' + color + ' on';
+  t.className = 'game-feedback-text ' + color + ' on';
+  t.textContent = msg;
+  setTimeout(() => {
+    f.className = 'game-flash';
+    t.className = 'game-feedback-text';
+  }, 480);
+}
+
+// ════════════════════════════════════════
+// DEVICE ORIENTATION (tilt detection)
+// ════════════════════════════════════════
+function requestOrientationPermission() {
+  if (typeof DeviceOrientationEvent !== 'undefined' &&
+      typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(r => { if (r === 'granted') bindOrientation(); })
+      .catch(() => {});
+  } else if (typeof DeviceOrientationEvent !== 'undefined') {
+    bindOrientation();
+  }
+}
+
+function bindOrientation() {
+  if (gameState.orientationBound) return;
+  window.addEventListener('deviceorientation', onOrientation);
+  gameState.orientationBound = true;
+}
+
+function onOrientation(e) {
+  if (!gameState.active || gameState.locked) return;
+  const beta = e.beta;
+  if (beta === null || beta === undefined) return;
+
+  if (gameState.betaBase === null) {
+    gameState.betaBase = beta;
+    return;
+  }
+
+  const delta = beta - gameState.betaBase;
+  if (delta < -TILT_DELTA) doCorrect();
+  else if (delta > TILT_DELTA) doPass();
+}
+
+// ════════════════════════════════════════
+// WAKE LOCK
+// ════════════════════════════════════════
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+  } catch(e) {}
+}
+function releaseWakeLock() {
+  if (wakeLock) { wakeLock.release().catch(()=>{}); wakeLock = null; }
+}
+
+// ════════════════════════════════════════
+// RESULTS
+// ════════════════════════════════════════
+function showResultsScreen() {
+  const { correct, missed } = gameState;
+  document.getElementById('res-score').textContent =
+    `${correct.length} point${correct.length !== 1 ? 's' : ''}!`;
+
+  document.getElementById('res-correct').innerHTML = correct.length
+    ? correct.map(w => `<span class="chip blue">${esc(w)}</span>`).join('')
+    : '<span style="color:#4b5563;font-size:14px;">None this round</span>';
+
+  document.getElementById('res-missed').innerHTML = missed.length
+    ? missed.map(w => `<span class="chip red">${esc(w)}</span>`).join('')
+    : '<span style="color:#4b5563;font-size:14px;">None — perfect round!</span>';
+
+  nav('results');
+}
+
+// ════════════════════════════════════════
+// MODAL
+// ════════════════════════════════════════
+function showModal(html) {
+  document.getElementById('modal-box').innerHTML = html;
+  document.getElementById('modal-wrap').style.display = 'block';
+  document.getElementById('modal-wrap').onkeydown = e => {
+    if (e.key === 'Enter') document.querySelector('.btn-mconfirm')?.click();
+    if (e.key === 'Escape') closeModal();
+  };
+}
+function closeModal() {
+  document.getElementById('modal-wrap').style.display = 'none';
+}
+function modalBgClick(e) {
+  if (e.target === document.getElementById('modal-wrap')) closeModal();
+}
+function focusInput() {
+  setTimeout(() => document.getElementById('mi')?.focus(), 80);
+}
+
+// ════════════════════════════════════════
+// UTIL
+// ════════════════════════════════════════
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// ════════════════════════════════════════
+// BOOT
+// ════════════════════════════════════════
+try { loadData(); } catch(e) {
+  // localStorage unavailable (e.g. iOS file:// context) — fall back to defaults
+  categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
+}
+renderHome();
+</script>
+</body>
+</html>
