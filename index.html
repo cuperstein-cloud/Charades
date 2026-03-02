@@ -1119,26 +1119,20 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA        = 50;    // degrees from resting position to trigger
-const TILT_STABLE_ZONE  = 12;   // max spread (degrees) across stability window
-const TILT_STABLE_COUNT = 3;    // readings needed to confirm "at rest"
-const TILT_STREAK       = 2;    // consecutive over-threshold readings to confirm tilt
-const TILT_DISABLE_MS   = 1200; // ms after any action before detection can start again
+const TILT_DELTA    = 40;    // degrees from baseline to trigger
+const TILT_STREAK   = 3;     // consecutive readings needed to confirm
+const TILT_COOLDOWN = 1500;  // ms after any action before tilt re-enables
 
-let tiltBase         = null;   // confirmed resting angle
-let tiltArmed        = false;  // true only once phone confirmed stable
-let tiltCount        = 0;      // streak counter
-let tiltDir          = 0;      // -1 = correct, +1 = pass, 0 = neutral
-let recentBetas      = [];     // rolling window for stability check
-let tiltDisabledUntil = 0;     // timestamp — ignore all tilt until this time passes
+let tiltBase          = null;  // baseline angle captured after each cooldown
+let tiltCount         = 0;     // consecutive readings in same direction
+let tiltDir           = 0;     // -1 = correct direction, +1 = pass direction
+let tiltReadyAt       = 0;     // timestamp when tilt detection is allowed again
 
 function resetTiltState() {
-  tiltBase    = null;
-  tiltArmed   = false;
-  tiltCount   = 0;
-  tiltDir     = 0;
-  recentBetas = [];
-  // tiltDisabledUntil is intentionally NOT reset here — set by advance()
+  tiltBase  = null;
+  tiltCount = 0;
+  tiltDir   = 0;
+  // tiltReadyAt is NOT reset here — only set by advance() and startGame()
 }
 
 const gameState = {
@@ -1171,7 +1165,7 @@ function startGame() {
   gameState.wordSecs = settings.wordSecs;
   gameState.locked = false;
   gameState.active = true;
-  tiltDisabledUntil = 0;
+  tiltReadyAt = 0;
   resetTiltState();
 
   nav('game');
@@ -1270,7 +1264,7 @@ function doPass() {
 function advance() {
   clearInterval(gameState.wordTimer);
   gameState.idx++;
-  tiltDisabledUntil = Date.now() + TILT_DISABLE_MS; // hard block until phone settles
+  tiltReadyAt = Date.now() + TILT_COOLDOWN; // hard block so return-swing can't fire
   setTimeout(() => {
     if (!gameState.active) return;
     gameState.locked = false;
@@ -1313,41 +1307,36 @@ function bindOrientation() {
 
 function onOrientation(e) {
   if (!gameState.active || gameState.locked) return;
-  if (Date.now() < tiltDisabledUntil) return;  // post-action dead window
 
+  const now = Date.now();
   const beta = e.beta;
   if (beta === null || beta === undefined) return;
 
-  // ── Phase 1: wait for phone to be genuinely still ──
-  if (!tiltArmed) {
-    recentBetas.push(beta);
-    if (recentBetas.length > TILT_STABLE_COUNT) recentBetas.shift();
+  // Still in the post-action cooldown — ignore everything
+  if (now < tiltReadyAt) return;
 
-    if (recentBetas.length === TILT_STABLE_COUNT) {
-      const spread = Math.max(...recentBetas) - Math.min(...recentBetas);
-      if (spread < TILT_STABLE_ZONE) {
-        tiltBase  = recentBetas.reduce((a, b) => a + b) / recentBetas.length;
-        tiltArmed = true;
-        tiltCount = 0;
-        tiltDir   = 0;
-      }
-    }
+  // First reading after cooldown — capture the resting baseline
+  if (tiltBase === null) {
+    tiltBase  = beta;
+    tiltCount = 0;
+    tiltDir   = 0;
     return;
   }
 
-  // ── Phase 2: armed — watch for deliberate tilt away from center ──
   const delta = beta - tiltBase;
 
   if (delta < -TILT_DELTA) {
+    // Tilting down → Got it
     if (tiltDir !== -1) { tiltDir = -1; tiltCount = 0; }
     if (++tiltCount >= TILT_STREAK) doCorrect();
 
   } else if (delta > TILT_DELTA) {
+    // Tilting up → Skip
     if (tiltDir !== 1) { tiltDir = 1; tiltCount = 0; }
     if (++tiltCount >= TILT_STREAK) doPass();
 
   } else {
-    // Neutral zone — clear streak so direction must be re-confirmed
+    // Back in neutral zone — reset streak
     tiltDir   = 0;
     tiltCount = 0;
   }
