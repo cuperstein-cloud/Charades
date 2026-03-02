@@ -1119,8 +1119,10 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA       = 35;   // degrees from baseline to trigger action
-const TILT_STREAK      = 3;    // consecutive readings needed to confirm tilt
+const TILT_DELTA_DOWN  = 35;   // degrees down (got it) — large range tilting phone forward
+const TILT_DELTA_UP    = 15;   // degrees up (skip) — much less range when phone near vertical
+const TILT_STREAK_DOWN = 3;    // consecutive readings to confirm got it
+const TILT_STREAK_UP   = 2;    // fewer readings for skip since shorter physical range
 const TILT_MIN_WAIT    = 1200; // minimum ms after action before checking return-to-center
 const TILT_RETURN_ZONE = 20;   // degrees — phone must be within this of base to re-arm
 
@@ -1349,15 +1351,15 @@ function onOrientation(e) {
 
   const delta = beta - tiltBase;
 
-  if (delta < -TILT_DELTA) {
+  if (delta < -TILT_DELTA_DOWN) {
     // Tilting down → Got it
     if (tiltDir !== -1) { tiltDir = -1; tiltCount = 0; }
-    if (++tiltCount >= TILT_STREAK) doCorrect();
+    if (++tiltCount >= TILT_STREAK_DOWN) doCorrect();
 
-  } else if (delta > TILT_DELTA) {
-    // Tilting up → Skip
+  } else if (delta > TILT_DELTA_UP) {
+    // Tilting up → Skip (lower threshold — limited range when phone is near vertical)
     if (tiltDir !== 1) { tiltDir = 1; tiltCount = 0; }
-    if (++tiltCount >= TILT_STREAK) doPass();
+    if (++tiltCount >= TILT_STREAK_UP) doPass();
 
   } else {
     // In neutral zone — reset streak
