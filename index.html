@@ -1153,7 +1153,23 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA = 40;  // degrees for tilt trigger
+const TILT_DELTA        = 65;  // degrees required to trigger (larger = less sensitive)
+const TILT_STREAK_REQ   = 3;   // consecutive readings needed to confirm a tilt
+const TILT_LOCK_MS      = 1500; // ms orientation stays locked after each action
+
+let orientationLocked   = false;
+let orientationLockTimer = null;
+let tiltStreak          = 0;   // negative = correct direction, positive = pass direction
+
+function lockOrientationAfterAction() {
+  orientationLocked = true;
+  tiltStreak = 0;
+  clearTimeout(orientationLockTimer);
+  orientationLockTimer = setTimeout(() => {
+    orientationLocked = false;
+    tiltStreak = 0;
+  }, TILT_LOCK_MS);
+}
 
 const gameState = {
   active: false,
@@ -1186,6 +1202,9 @@ function startGame() {
   gameState.locked = false;
   gameState.betaBase = null;
   gameState.active = true;
+  orientationLocked = false;
+  tiltStreak = 0;
+  clearTimeout(orientationLockTimer);
 
   nav('game');
   requestOrientationPermission();
@@ -1283,6 +1302,7 @@ function doPass() {
 function advance() {
   clearInterval(gameState.wordTimer);
   gameState.idx++;
+  lockOrientationAfterAction();   // lock tilt for 1.5s so return-swing can't misfire
   setTimeout(() => {
     if (!gameState.active) return;
     gameState.locked = false;
@@ -1324,18 +1344,33 @@ function bindOrientation() {
 }
 
 function onOrientation(e) {
-  if (!gameState.active || gameState.locked) return;
+  if (!gameState.active || gameState.locked || orientationLocked) return;
   const beta = e.beta;
   if (beta === null || beta === undefined) return;
 
+  // Capture baseline on first reading after each new word
   if (gameState.betaBase === null) {
     gameState.betaBase = beta;
+    tiltStreak = 0;
     return;
   }
 
   const delta = beta - gameState.betaBase;
-  if (delta < -TILT_DELTA) doCorrect();
-  else if (delta > TILT_DELTA) doPass();
+
+  if (delta < -TILT_DELTA) {
+    // Tilting down (correct direction)
+    if (tiltStreak > 0) tiltStreak = 0;  // was going other way — reset
+    tiltStreak--;
+    if (tiltStreak <= -TILT_STREAK_REQ) doCorrect();
+  } else if (delta > TILT_DELTA) {
+    // Tilting up (pass direction)
+    if (tiltStreak < 0) tiltStreak = 0;  // was going other way — reset
+    tiltStreak++;
+    if (tiltStreak >= TILT_STREAK_REQ) doPass();
+  } else {
+    // Back in neutral zone — reset streak
+    tiltStreak = 0;
+  }
 }
 
 // ════════════════════════════════════════
