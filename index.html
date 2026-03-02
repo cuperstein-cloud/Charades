@@ -8,7 +8,7 @@
   <title>Charades!</title>
   <style>
     :root {
-      --bg: #7f0000;
+      --bg: #0a1628;
       --card: #1e293b;
       --blue: #3b82f6;
       --blue-light: #93c5fd;
@@ -42,7 +42,7 @@
 
     /* ── HOME ── */
     #screen-home {
-      background: linear-gradient(160deg, #7f0000 0%, #b91c1c 100%);
+      background: linear-gradient(160deg, #0a1628 0%, #0f2a4a 100%);
     }
     .home-header {
       width: 100%;
@@ -316,7 +316,7 @@
 
     /* ── READY ── */
     #screen-ready {
-      background: linear-gradient(160deg, #7f0000, #b91c1c);
+      background: linear-gradient(160deg, #0a1628, #0f2a4a);
       padding: 40px 28px;
       text-align: center;
       justify-content: center;
@@ -368,7 +368,7 @@
 
     /* ── GAME ── */
     #screen-game {
-      background: #7f0000;
+      background: #0a1628;
       overflow: hidden;
     }
     .game-flash {
@@ -479,7 +479,7 @@
 
     /* ── RESULTS ── */
     #screen-results {
-      background: linear-gradient(160deg, #7f0000, #b91c1c);
+      background: linear-gradient(160deg, #0a1628, #0f2a4a);
     }
     .results-header {
       width: 100%;
@@ -635,7 +635,7 @@
       .word-bar-wrap { padding: 0 16px; }
       .word-bar-bg { height: 5px; }
       .game-center { padding: 6px 20px; }
-      .game-word { font-size: 36px !important; }
+      .game-word { font-size: 64px !important; }
       .game-word-num { font-size: 52px; margin-top: 4px; }
       .btn-game-back { width: 34px; height: 34px; font-size: 16px; }
 
@@ -1340,10 +1340,22 @@ function bindOrientation() {
   gameState.orientationBound = true;
 }
 
+// Returns the tilt value for the current device orientation.
+// In landscape the "nod" forward/backward maps to the gamma axis, not beta.
+// orient=90  (home button right): forward nod = gamma decreases → negative delta = got-it ✓
+// orient=-90 (home button left):  forward nod = gamma increases → negate to get negative ✓
+function getActiveTilt(e) {
+  const orient = typeof window.orientation !== 'undefined' ? window.orientation : 0;
+  if (Math.abs(orient) === 90) {
+    return orient > 0 ? (e.gamma || 0) : -(e.gamma || 0);
+  }
+  return e.beta || 0;
+}
+
 function onOrientation(e) {
   if (!gameState.active || gameState.locked) return;
 
-  const beta = e.beta;
+  const beta = getActiveTilt(e);
   if (beta === null || beta === undefined) return;
 
   // Maintain rolling history
