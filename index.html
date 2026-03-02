@@ -1119,40 +1119,56 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA_DOWN  = 35;   // degrees down (got it) — large range tilting phone forward
-const TILT_DELTA_UP    = 15;   // degrees up (skip) — much less range when phone near vertical
-const TILT_STREAK_DOWN = 3;    // consecutive readings to confirm got it
-const TILT_STREAK_UP   = 2;    // fewer readings for skip since shorter physical range
-const TILT_MIN_WAIT    = 1200; // minimum ms after action before checking return-to-center
-const TILT_RETURN_ZONE = 20;   // degrees — phone must be within this of base to re-arm
+const TILT_DELTA_DOWN  = 35;  // degrees down from baseline → got it
+const TILT_DELTA_UP    = 10;  // degrees up from baseline → skip (short range on forehead)
+const TILT_STREAK_DOWN = 3;   // consecutive readings to confirm got it
+const TILT_STREAK_UP   = 2;   // consecutive readings to confirm skip
+const TILT_MIN_WAIT    = 1500; // ms minimum recovery time after any action
+const TILT_SETTLE_N    = 5;   // readings needed to declare "stable"
+const TILT_SETTLE_ZONE = 12;  // degrees max spread across those readings = stable
 
-let tiltBase       = null;   // resting baseline (preserved after action as recovery target)
-let tiltCount      = 0;      // consecutive readings in current direction
-let tiltDir        = 0;      // -1 = down (correct), +1 = up (skip), 0 = neutral
-let tiltWaiting    = false;  // true = recovering, phone must return to center first
-let tiltActionTime = 0;      // timestamp of most recent action
+let tiltBase       = null;   // baseline beta — set only when phone is stable
+let tiltCount      = 0;
+let tiltDir        = 0;
+let tiltWaiting    = false;  // true = recovering after an action
+let tiltActionTime = 0;
+let tiltHistory    = [];     // rolling window of recent beta readings
+let tiltArmed      = false;  // false until phone settles for the first time
 
-// Called once at game start — full reset including baseline
+// Full reset at game start
 function initTiltForGame() {
   tiltBase       = null;
   tiltCount      = 0;
   tiltDir        = 0;
   tiltWaiting    = false;
   tiltActionTime = 0;
+  tiltHistory    = [];
+  tiltArmed      = false;
 }
 
-// Called after each action — enter recovery mode (keeps tiltBase as center reference)
+// Called after each action — enter recovery; phone must re-settle before next action
 function onTiltAction() {
   tiltCount      = 0;
   tiltDir        = 0;
   tiltWaiting    = true;
   tiltActionTime = Date.now();
+  tiltHistory    = [];   // flush history so stability check uses fresh readings
 }
 
-// Called on each new word — resets streak but not base or waiting state
+// Called on each new word — resets streak only
 function resetTiltState() {
   tiltCount = 0;
   tiltDir   = 0;
+}
+
+// Returns true + sets tiltBase if last TILT_SETTLE_N readings are within TILT_SETTLE_ZONE
+function checkStable() {
+  if (tiltHistory.length < TILT_SETTLE_N) return false;
+  const recent = tiltHistory.slice(-TILT_SETTLE_N);
+  const spread = Math.max(...recent) - Math.min(...recent);
+  if (spread > TILT_SETTLE_ZONE) return false;
+  tiltBase = recent.reduce((a, b) => a + b, 0) / TILT_SETTLE_N;
+  return true;
 }
 
 const gameState = {
@@ -1213,7 +1229,7 @@ function displayWord() {
   el.textContent = w;
   // Adaptive font size
   const len = w.length;
-  el.style.fontSize = len > 30 ? '28px' : len > 20 ? '36px' : len > 12 ? '44px' : '52px';
+  el.style.fontSize = len > 30 ? '38px' : len > 20 ? '48px' : len > 12 ? '60px' : '72px';
   resetTiltState();
   updateWordBar();
   document.getElementById('g-wnum').textContent = settings.wordSecs;
@@ -1330,25 +1346,28 @@ function onOrientation(e) {
   const beta = e.beta;
   if (beta === null || beta === undefined) return;
 
-  // First reading ever — capture the resting baseline and wait for next reading
-  if (tiltBase === null) {
-    tiltBase = beta;
+  // Maintain rolling history
+  tiltHistory.push(beta);
+  if (tiltHistory.length > 10) tiltHistory.shift();
+
+  // Phase 1: Initial arm — wait for phone to settle on forehead before any detection
+  if (!tiltArmed) {
+    if (checkStable()) tiltArmed = true;
     return;
   }
 
-  // Recovery mode: phone must return near center AND minimum time must have passed
+  // Phase 2: Post-action recovery — wait for min time AND phone to re-settle
   if (tiltWaiting) {
-    const elapsed     = Date.now() - tiltActionTime;
-    const backToCenter = Math.abs(beta - tiltBase) < TILT_RETURN_ZONE;
-    if (elapsed >= TILT_MIN_WAIT && backToCenter) {
+    if (Date.now() - tiltActionTime >= TILT_MIN_WAIT && checkStable()) {
       tiltWaiting = false;
-      tiltBase    = beta;  // re-zero at current resting position
       tiltCount   = 0;
       tiltDir     = 0;
+      // tiltBase was already updated by checkStable()
     }
-    return;  // ignore all tilt while recovering
+    return;
   }
 
+  // Phase 3: Active detection
   const delta = beta - tiltBase;
 
   if (delta < -TILT_DELTA_DOWN) {
@@ -1357,12 +1376,12 @@ function onOrientation(e) {
     if (++tiltCount >= TILT_STREAK_DOWN) doCorrect();
 
   } else if (delta > TILT_DELTA_UP) {
-    // Tilting up → Skip (lower threshold — limited range when phone is near vertical)
+    // Tilting up → Skip
     if (tiltDir !== 1) { tiltDir = 1; tiltCount = 0; }
     if (++tiltCount >= TILT_STREAK_UP) doPass();
 
   } else {
-    // In neutral zone — reset streak
+    // Neutral zone — reset streak
     tiltDir   = 0;
     tiltCount = 0;
   }
