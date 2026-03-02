@@ -1119,20 +1119,38 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA    = 40;    // degrees from baseline to trigger
-const TILT_STREAK   = 3;     // consecutive readings needed to confirm
-const TILT_COOLDOWN = 1500;  // ms after any action before tilt re-enables
+const TILT_DELTA       = 35;   // degrees from baseline to trigger action
+const TILT_STREAK      = 3;    // consecutive readings needed to confirm tilt
+const TILT_MIN_WAIT    = 1200; // minimum ms after action before checking return-to-center
+const TILT_RETURN_ZONE = 20;   // degrees — phone must be within this of base to re-arm
 
-let tiltBase          = null;  // baseline angle captured after each cooldown
-let tiltCount         = 0;     // consecutive readings in same direction
-let tiltDir           = 0;     // -1 = correct direction, +1 = pass direction
-let tiltReadyAt       = 0;     // timestamp when tilt detection is allowed again
+let tiltBase       = null;   // resting baseline (preserved after action as recovery target)
+let tiltCount      = 0;      // consecutive readings in current direction
+let tiltDir        = 0;      // -1 = down (correct), +1 = up (skip), 0 = neutral
+let tiltWaiting    = false;  // true = recovering, phone must return to center first
+let tiltActionTime = 0;      // timestamp of most recent action
 
+// Called once at game start — full reset including baseline
+function initTiltForGame() {
+  tiltBase       = null;
+  tiltCount      = 0;
+  tiltDir        = 0;
+  tiltWaiting    = false;
+  tiltActionTime = 0;
+}
+
+// Called after each action — enter recovery mode (keeps tiltBase as center reference)
+function onTiltAction() {
+  tiltCount      = 0;
+  tiltDir        = 0;
+  tiltWaiting    = true;
+  tiltActionTime = Date.now();
+}
+
+// Called on each new word — resets streak but not base or waiting state
 function resetTiltState() {
-  tiltBase  = null;
   tiltCount = 0;
   tiltDir   = 0;
-  // tiltReadyAt is NOT reset here — only set by advance() and startGame()
 }
 
 const gameState = {
@@ -1165,8 +1183,7 @@ function startGame() {
   gameState.wordSecs = settings.wordSecs;
   gameState.locked = false;
   gameState.active = true;
-  tiltReadyAt = 0;
-  resetTiltState();
+  initTiltForGame();
 
   nav('game');
   requestOrientationPermission();
@@ -1264,7 +1281,7 @@ function doPass() {
 function advance() {
   clearInterval(gameState.wordTimer);
   gameState.idx++;
-  tiltReadyAt = Date.now() + TILT_COOLDOWN; // hard block so return-swing can't fire
+  onTiltAction(); // enter recovery mode — phone must return to center before re-arming
   setTimeout(() => {
     if (!gameState.active) return;
     gameState.locked = false;
@@ -1308,19 +1325,26 @@ function bindOrientation() {
 function onOrientation(e) {
   if (!gameState.active || gameState.locked) return;
 
-  const now = Date.now();
   const beta = e.beta;
   if (beta === null || beta === undefined) return;
 
-  // Still in the post-action cooldown — ignore everything
-  if (now < tiltReadyAt) return;
-
-  // First reading after cooldown — capture the resting baseline
+  // First reading ever — capture the resting baseline and wait for next reading
   if (tiltBase === null) {
-    tiltBase  = beta;
-    tiltCount = 0;
-    tiltDir   = 0;
+    tiltBase = beta;
     return;
+  }
+
+  // Recovery mode: phone must return near center AND minimum time must have passed
+  if (tiltWaiting) {
+    const elapsed     = Date.now() - tiltActionTime;
+    const backToCenter = Math.abs(beta - tiltBase) < TILT_RETURN_ZONE;
+    if (elapsed >= TILT_MIN_WAIT && backToCenter) {
+      tiltWaiting = false;
+      tiltBase    = beta;  // re-zero at current resting position
+      tiltCount   = 0;
+      tiltDir     = 0;
+    }
+    return;  // ignore all tilt while recovering
   }
 
   const delta = beta - tiltBase;
@@ -1336,7 +1360,7 @@ function onOrientation(e) {
     if (++tiltCount >= TILT_STREAK) doPass();
 
   } else {
-    // Back in neutral zone — reset streak
+    // In neutral zone — reset streak
     tiltDir   = 0;
     tiltCount = 0;
   }
