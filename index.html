@@ -320,6 +320,8 @@
       padding: 40px 28px;
       text-align: center;
       justify-content: center;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .ready-emoji { font-size: 72px; margin-bottom: 20px; }
     .ready-title { font-size: 34px; font-weight: 900; margin-bottom: 8px; }
@@ -629,24 +631,45 @@
     }
     .btn-mconfirm.danger { background: var(--red); }
 
-    /* ── LANDSCAPE WALL ── */
-    .landscape-wall {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: #0a0e1a;
-      z-index: 99999;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 40px;
-    }
-    .landscape-wall-icon { font-size: 56px; margin-bottom: 20px; }
-    .landscape-wall-title { font-size: 24px; font-weight: 900; margin-bottom: 8px; }
-    .landscape-wall-sub { font-size: 15px; color: var(--muted); }
+    /* ── LANDSCAPE ADJUSTMENTS ── */
     @media (orientation: landscape) and (max-height: 500px) {
-      .landscape-wall { display: flex; }
+      .home-header { padding: 16px 20px 8px; }
+      .home-title { font-size: 28px; }
+      .home-subtitle { font-size: 13px; }
+      .categories-list { padding: 4px 20px 20px; gap: 8px; }
+      .category-card { padding: 12px 16px 12px 20px; border-radius: 14px; }
+      .category-card .name { font-size: 16px; }
+
+      .admin-header { padding: 16px 20px 8px; }
+      .admin-title { font-size: 20px; }
+      .admin-content { padding: 0 20px 60px; }
+
+      #screen-ready { padding: 16px 24px; overflow-y: auto; justify-content: flex-start; }
+      .ready-emoji { font-size: 36px; margin-bottom: 8px; }
+      .ready-title { font-size: 22px; }
+      .ready-cat { font-size: 15px; margin-bottom: 12px; }
+      #ready-timers { margin-top: -8px !important; margin-bottom: 12px !important; }
+      .tilt-box { padding: 12px 16px; margin-bottom: 14px; }
+      .tilt-row { padding: 6px 0; }
+      .tilt-icon { font-size: 22px; }
+      .tilt-action { font-size: 13px; }
+      .btn-start { padding: 14px; font-size: 18px; }
+      .btn-back-ready { margin-top: 6px; font-size: 13px; padding: 6px; }
+
+      .game-top { padding: 12px 20px 6px; }
+      .game-timer-val { font-size: 26px; }
+      .game-score-val { font-size: 26px; }
+      .game-timer-label, .game-score-label { font-size: 9px; }
+      .word-bar-wrap { padding: 0 16px; }
+      .word-bar-bg { height: 5px; }
+      .game-center { padding: 6px 20px; }
+      .game-word { font-size: 36px !important; }
+      .game-word-num { font-size: 52px; margin-top: 4px; }
+      .game-bottom { padding: 6px 16px 16px; gap: 8px; }
+      .btn-game-back { width: 34px; height: 34px; font-size: 16px; }
+
+      .results-header { padding: 20px 20px 12px; }
+      .results-title { font-size: 26px; }
     }
   </style>
 </head>
@@ -756,13 +779,6 @@
   <div class="results-footer">
     <button class="btn-next-round" onclick="nav('home')">Next Round →</button>
   </div>
-</div>
-
-<!-- ═══════════ LANDSCAPE WALL ═══════════ -->
-<div class="landscape-wall">
-  <div class="landscape-wall-icon">📱</div>
-  <div class="landscape-wall-title">Rotate Your Phone</div>
-  <div class="landscape-wall-sub">This game works best in portrait mode</div>
 </div>
 
 <!-- ═══════════ MODAL ═══════════ -->
