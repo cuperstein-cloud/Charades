@@ -476,35 +476,6 @@
       font-variant-numeric: tabular-nums;
       line-height: 1;
     }
-    .game-bottom {
-      width: 100%;
-      display: flex;
-      gap: 10px;
-      padding: 12px 24px 36px;
-      flex-shrink: 0;
-    }
-    .btn-game-pass {
-      flex: 1;
-      padding: 16px;
-      background: rgba(239,68,68,0.12);
-      border: 2px solid rgba(239,68,68,0.3);
-      border-radius: 16px;
-      color: var(--red-light);
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .btn-game-correct {
-      flex: 1;
-      padding: 16px;
-      background: rgba(59,130,246,0.12);
-      border: 2px solid rgba(59,130,246,0.3);
-      border-radius: 16px;
-      color: var(--blue-light);
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-    }
 
     /* ── RESULTS ── */
     #screen-results {
@@ -666,7 +637,6 @@
       .game-center { padding: 6px 20px; }
       .game-word { font-size: 36px !important; }
       .game-word-num { font-size: 52px; margin-top: 4px; }
-      .game-bottom { padding: 6px 16px 16px; gap: 8px; }
       .btn-game-back { width: 34px; height: 34px; font-size: 16px; }
 
       .results-header { padding: 20px 20px 12px; }
@@ -755,10 +725,6 @@
     <div class="game-word-num" id="g-wnum">15</div>
   </div>
 
-  <div class="game-bottom">
-    <button class="btn-game-pass" onclick="doPass()">✗ SKIP</button>
-    <button class="btn-game-correct" onclick="doCorrect()">✓ GOT IT</button>
-  </div>
 </div>
 
 <!-- ═══════════ RESULTS ═══════════ -->
@@ -1153,22 +1119,23 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA        = 65;  // degrees required to trigger (larger = less sensitive)
-const TILT_STREAK_REQ   = 3;   // consecutive readings needed to confirm a tilt
-const TILT_LOCK_MS      = 1500; // ms orientation stays locked after each action
+const TILT_DELTA        = 60;  // degrees from resting position to trigger
+const TILT_STABLE_ZONE  = 8;   // max spread (degrees) across recent readings to be "stable"
+const TILT_STABLE_COUNT = 4;   // consecutive stable readings before arming
+const TILT_STREAK       = 3;   // consecutive over-threshold readings to confirm action
 
-let orientationLocked   = false;
-let orientationLockTimer = null;
-let tiltStreak          = 0;   // negative = correct direction, positive = pass direction
+let tiltBase    = null;   // confirmed resting angle
+let tiltArmed   = false;  // true only when phone is confirmed stable at center
+let tiltCount   = 0;      // streak / stability counter
+let tiltDir     = 0;      // -1 = correct direction, +1 = pass direction
+let recentBetas = [];     // rolling window used for stability detection
 
-function lockOrientationAfterAction() {
-  orientationLocked = true;
-  tiltStreak = 0;
-  clearTimeout(orientationLockTimer);
-  orientationLockTimer = setTimeout(() => {
-    orientationLocked = false;
-    tiltStreak = 0;
-  }, TILT_LOCK_MS);
+function resetTiltState() {
+  tiltBase    = null;
+  tiltArmed   = false;
+  tiltCount   = 0;
+  tiltDir     = 0;
+  recentBetas = [];
 }
 
 const gameState = {
@@ -1200,11 +1167,8 @@ function startGame() {
   gameState.gameSecs = settings.gameSecs;
   gameState.wordSecs = settings.wordSecs;
   gameState.locked = false;
-  gameState.betaBase = null;
   gameState.active = true;
-  orientationLocked = false;
-  tiltStreak = 0;
-  clearTimeout(orientationLockTimer);
+  resetTiltState();
 
   nav('game');
   requestOrientationPermission();
@@ -1233,7 +1197,7 @@ function displayWord() {
   // Adaptive font size
   const len = w.length;
   el.style.fontSize = len > 30 ? '28px' : len > 20 ? '36px' : len > 12 ? '44px' : '52px';
-  gameState.betaBase = null;
+  resetTiltState();
   updateWordBar();
   document.getElementById('g-wnum').textContent = settings.wordSecs;
 }
@@ -1302,7 +1266,6 @@ function doPass() {
 function advance() {
   clearInterval(gameState.wordTimer);
   gameState.idx++;
-  lockOrientationAfterAction();   // lock tilt for 1.5s so return-swing can't misfire
   setTimeout(() => {
     if (!gameState.active) return;
     gameState.locked = false;
@@ -1344,32 +1307,45 @@ function bindOrientation() {
 }
 
 function onOrientation(e) {
-  if (!gameState.active || gameState.locked || orientationLocked) return;
+  if (!gameState.active || gameState.locked) return;
   const beta = e.beta;
   if (beta === null || beta === undefined) return;
 
-  // Capture baseline on first reading after each new word
-  if (gameState.betaBase === null) {
-    gameState.betaBase = beta;
-    tiltStreak = 0;
+  // ── Phase 1: wait for the phone to be STABLE before arming ──
+  if (!tiltArmed) {
+    recentBetas.push(beta);
+    if (recentBetas.length > TILT_STABLE_COUNT) recentBetas.shift();
+
+    if (recentBetas.length === TILT_STABLE_COUNT) {
+      const spread = Math.max(...recentBetas) - Math.min(...recentBetas);
+      if (spread < TILT_STABLE_ZONE) {
+        // Phone is confirmed stable — set the resting baseline and arm
+        tiltBase  = recentBetas.reduce((a, b) => a + b) / recentBetas.length;
+        tiltArmed = true;
+        tiltCount = 0;
+        tiltDir   = 0;
+      }
+    }
     return;
   }
 
-  const delta = beta - gameState.betaBase;
+  // ── Phase 2: armed — watch for a deliberate tilt ──
+  const delta = beta - tiltBase;
 
   if (delta < -TILT_DELTA) {
-    // Tilting down (correct direction)
-    if (tiltStreak > 0) tiltStreak = 0;  // was going other way — reset
-    tiltStreak--;
-    if (tiltStreak <= -TILT_STREAK_REQ) doCorrect();
+    // Tilting toward "correct"
+    if (tiltDir !== -1) { tiltDir = -1; tiltCount = 0; }
+    if (++tiltCount >= TILT_STREAK) doCorrect();
+
   } else if (delta > TILT_DELTA) {
-    // Tilting up (pass direction)
-    if (tiltStreak < 0) tiltStreak = 0;  // was going other way — reset
-    tiltStreak++;
-    if (tiltStreak >= TILT_STREAK_REQ) doPass();
+    // Tilting toward "pass"
+    if (tiltDir !== 1) { tiltDir = 1; tiltCount = 0; }
+    if (++tiltCount >= TILT_STREAK) doPass();
+
   } else {
-    // Back in neutral zone — reset streak
-    tiltStreak = 0;
+    // Back inside neutral zone — reset streak and direction
+    tiltDir   = 0;
+    tiltCount = 0;
   }
 }
 
