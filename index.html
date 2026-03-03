@@ -1275,9 +1275,9 @@ function deleteWord(catId, idx) {
 //                every action before detection re-arms.
 //
 // ─────────────────────────────────────────────────────────────────────
-const TILT_DEAD_ZONE  = 40;   // ±degrees neutral band — requires a steep, deliberate tilt
+const TILT_DEAD_ZONE  = 22;   // ±degrees neutral band — balanced for forehead gameplay
 const TILT_SMOOTH_N   = 5;    // moving-average window (low-pass filter)
-const TILT_STREAK     = 6;    // smoothed readings past dead zone to confirm action
+const TILT_STREAK     = 4;    // smoothed readings past dead zone to confirm action
 const TILT_COOLDOWN   = 1500; // ms hard lockout after any action
 const TILT_ARM_DELAY  = 2000; // ms wait before detection first activates
 const TILT_SETTLE_N   = 8;    // raw readings to declare phone "stable"
