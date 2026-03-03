@@ -78,37 +78,35 @@
     }
     .categories-list {
       width: 100%;
-      padding: 8px 24px 40px;
+      padding: 8px 20px 40px;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      align-content: start;
     }
+    .empty-state-wrap { grid-column: 1 / -1; }
     .category-card {
       position: relative;
-      background: var(--card);
       border-radius: 20px;
-      padding: 20px 20px 20px 26px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
       cursor: pointer;
       border: 2px solid transparent;
       transition: transform 0.12s, border-color 0.12s;
       overflow: hidden;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 16px;
     }
-    .category-card:active { transform: scale(0.97); border-color: var(--blue); }
-    .card-stripe {
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 6px;
-      border-radius: 20px 0 0 20px;
-    }
-    .category-card .name { font-size: 20px; font-weight: 700; }
-    .category-card .count { font-size: 13px; color: var(--muted); margin-top: 4px; }
-    .category-card-arrow { font-size: 22px; opacity: 0.35; }
+    .category-card:active { transform: scale(0.95); border-color: rgba(255,255,255,0.5); }
+    .category-card .cat-emoji { font-size: 40px; line-height: 1; }
+    .category-card .name { font-size: 17px; font-weight: 800; text-align: center; line-height: 1.2; }
+    .category-card .count { font-size: 12px; color: rgba(255,255,255,0.65); margin-top: 2px; }
     .empty-state {
       text-align: center;
       padding: 60px 24px;
@@ -366,6 +364,41 @@
       padding: 10px;
     }
 
+    /* ── COUNTDOWN ── */
+    #screen-countdown {
+      background: linear-gradient(160deg, #7f0000, #b91c1c);
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+    }
+    .countdown-label {
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.85);
+    }
+    @keyframes countPop {
+      0%   { transform: scale(1.4); opacity: 0.4; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    .countdown-number {
+      font-size: 160px;
+      font-weight: 900;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(135deg, #60a5fa, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: countPop 0.4s ease-out forwards;
+    }
+    .countdown-cat {
+      font-size: 20px;
+      color: rgba(255,255,255,0.55);
+      font-weight: 600;
+    }
+
     /* ── GAME ── */
     #screen-game {
       background: #7f0000;
@@ -607,9 +640,10 @@
       .home-header { padding: 20px 20px 10px; }
       .home-title { font-size: 28px; }
       .home-subtitle { font-size: 13px; }
-      .categories-list { padding: 10px 20px 40px; gap: 22px; }
-      .category-card { padding: 16px 18px 16px 22px; border-radius: 16px; }
-      .category-card .name { font-size: 17px; }
+      .categories-list { padding: 6px 16px 40px; gap: 10px; }
+      .category-card { border-radius: 16px; gap: 6px; }
+      .category-card .cat-emoji { font-size: 28px; }
+      .category-card .name { font-size: 14px; }
       .category-card .count { display: none; }
 
       .admin-header { padding: 16px 20px 8px; }
@@ -783,6 +817,13 @@
   </div>
   <button class="btn-start" id="btn-start-game" onclick="startGame()">▶ START</button>
   <button class="btn-back-ready" onclick="nav('home')">← Choose a different category</button>
+</div>
+
+<!-- ═══════════ COUNTDOWN ═══════════ -->
+<div id="screen-countdown" class="screen">
+  <div class="countdown-label">Get Ready</div>
+  <div class="countdown-number" id="countdown-num">5</div>
+  <div class="countdown-cat" id="countdown-cat"></div>
 </div>
 
 <!-- ═══════════ GAME ═══════════ -->
@@ -968,24 +1009,28 @@ function renderHome() {
   const el = document.getElementById('home-list');
   if (categories.length === 0) {
     el.innerHTML = `
-      <div class="empty-state">
-        <div class="icon">🎭</div>
-        <p>No categories yet.<br>Head to Admin to add some!</p>
-        <button class="btn-go-admin" onclick="nav('admin')">⚙ Go to Admin</button>
+      <div class="empty-state-wrap">
+        <div class="empty-state">
+          <div class="icon">🎭</div>
+          <p>No categories yet.<br>Head to Admin to add some!</p>
+          <button class="btn-go-admin" onclick="nav('admin')">⚙ Go to Admin</button>
+        </div>
       </div>`;
     return;
   }
   el.innerHTML = categories.map((cat, i) => {
     const [c1, c2] = CARD_GRADIENTS[i % CARD_GRADIENTS.length];
     const n = cat.words.length;
+    // Extract leading emoji (if any) from name for the tile icon
+    const emojiMatch = cat.name.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u);
+    const emoji = emojiMatch ? emojiMatch[0].trim() : '🎭';
+    const label = emojiMatch ? cat.name.slice(emojiMatch[0].length) : cat.name;
     return `
-      <div class="category-card" onclick="selectCategory('${cat.id}')">
-        <div class="card-stripe" style="background:linear-gradient(180deg,${c1},${c2})"></div>
-        <div>
-          <div class="name">${esc(cat.name)}</div>
-          <div class="count">${n} word${n !== 1 ? 's' : ''}</div>
-        </div>
-        <div class="category-card-arrow">▶</div>
+      <div class="category-card" onclick="selectCategory('${cat.id}')"
+           style="background:linear-gradient(145deg,${c1},${c2})">
+        <div class="cat-emoji">${emoji}</div>
+        <div class="name">${esc(label)}</div>
+        <div class="count">${n} word${n !== 1 ? 's' : ''}</div>
       </div>`;
   }).join('');
 }
@@ -1318,6 +1363,7 @@ const gameState = {
 
 let wakeLock = null;
 
+startGame.countdownGen = 0;
 function startGame() {
   const cat = categories.find(c => c.id === currentCatId);
   if (!cat || cat.words.length === 0) return;
@@ -1330,15 +1376,49 @@ function startGame() {
   gameState.gameSecs = settings.gameSecs;
   gameState.wordSecs = settings.wordSecs;
   gameState.locked = false;
-  gameState.active = true;
-  initTiltForGame();
+  gameState.active = false; // not active until countdown ends
 
-  nav('game');
   requestOrientationPermission();
   acquireWakeLock();
-  displayWord();
-  runGameTimer();
-  runWordTimer();
+
+  // Show countdown screen
+  let numEl = document.getElementById('countdown-num');
+  const catEl = document.getElementById('countdown-cat');
+  catEl.textContent = cat.name;
+  nav('countdown');
+
+  let count = 5;
+  const countdownId = ++startGame.countdownGen;
+
+  const animateTick = (n) => {
+    // Restart CSS animation by replacing the element
+    const parent = numEl.parentNode;
+    const clone = numEl.cloneNode(true);
+    clone.textContent = n;
+    parent.replaceChild(clone, numEl);
+    numEl = clone;
+  };
+
+  animateTick(count);
+
+  const tick = () => {
+    if (countdownId !== startGame.countdownGen) return; // stale countdown
+    count--;
+    if (count > 0) {
+      animateTick(count);
+      setTimeout(tick, 1000);
+    } else {
+      // Launch game
+      gameState.active = true;
+      initTiltForGame();
+      nav('game');
+      displayWord();
+      runGameTimer();
+      runWordTimer();
+    }
+  };
+
+  setTimeout(tick, 1000);
 }
 
 function stopGame(showResults) {
