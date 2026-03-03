@@ -8,7 +8,7 @@
   <title>Charades!</title>
   <style>
     :root {
-      --bg: #0a1628;
+      --bg: #7f0000;
       --card: #1e293b;
       --blue: #3b82f6;
       --blue-light: #93c5fd;
@@ -42,7 +42,7 @@
 
     /* ── HOME ── */
     #screen-home {
-      background: linear-gradient(160deg, #0a1628 0%, #0f2a4a 100%);
+      background: linear-gradient(160deg, #7f0000 0%, #b91c1c 100%);
     }
     .home-header {
       width: 100%;
@@ -316,7 +316,7 @@
 
     /* ── READY ── */
     #screen-ready {
-      background: linear-gradient(160deg, #0a1628, #0f2a4a);
+      background: linear-gradient(160deg, #7f0000, #b91c1c);
       padding: 40px 28px;
       text-align: center;
       justify-content: center;
@@ -368,7 +368,7 @@
 
     /* ── GAME ── */
     #screen-game {
-      background: #0a1628;
+      background: #7f0000;
       overflow: hidden;
     }
     .game-flash {
@@ -479,7 +479,7 @@
 
     /* ── RESULTS ── */
     #screen-results {
-      background: linear-gradient(160deg, #0a1628, #0f2a4a);
+      background: linear-gradient(160deg, #7f0000, #b91c1c);
     }
     .results-header {
       width: 100%;
@@ -1142,9 +1142,9 @@ function deleteWord(catId, idx) {
 //                every action before detection re-arms.
 //
 // ─────────────────────────────────────────────────────────────────────
-const TILT_DEAD_ZONE  = 20;   // ±degrees neutral band around baseline
+const TILT_DEAD_ZONE  = 40;   // ±degrees neutral band — requires a steep, deliberate tilt
 const TILT_SMOOTH_N   = 5;    // moving-average window (low-pass filter)
-const TILT_STREAK     = 4;    // smoothed readings past dead zone to confirm action
+const TILT_STREAK     = 6;    // smoothed readings past dead zone to confirm action
 const TILT_COOLDOWN   = 1500; // ms hard lockout after any action
 const TILT_ARM_DELAY  = 2000; // ms wait before detection first activates
 const TILT_SETTLE_N   = 8;    // raw readings to declare phone "stable"
