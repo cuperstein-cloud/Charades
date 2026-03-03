@@ -1553,11 +1553,12 @@ function bindOrientation() {
 
 // Returns the Roll (gamma) value, sign-corrected for this landscape orientation.
 // tiltGammaSign is set once at game start — never recalculated mid-game.
-// Result: negative = top tilts forward (correct), positive = top tilts back (skip).
-// Beta is the pitch axis: rotation around X, measuring top-vs-bottom differential.
-// This is orientation-invariant — same behavior for landscape-left and landscape-right.
+// Beta measures top-vs-bottom tilt, but its sign flips between landscape-left and
+// landscape-right (because the portrait X-axis physically points up vs down).
+// tiltGammaSign corrects for this: landscape-primary = +1, landscape-secondary = -1.
+// Result after correction: negative = top tilts forward (correct), positive = top tilts back (skip).
 function getActiveTilt(e) {
-  return e.beta || 0;
+  return (e.beta || 0) * tiltGammaSign;
 }
 
 function onOrientation(e) {
