@@ -1266,7 +1266,7 @@ function deleteWord(catId, idx) {
 //                tiltGammaSign normalises direction for landscape-primary vs
 //                landscape-secondary so it never flips between orientations.
 //
-// 3. DEAD ZONE  : ±TILT_DEAD_ZONE° from stable baseline = neutral, no action.
+// 3. DEAD ZONE  : asymmetric — TILT_CORRECT_DEG forward, TILT_SKIP_DEG backward.
 //
 // 4. SMOOTHING  : Moving average over TILT_SMOOTH_N readings (low-pass filter)
 //                applied before the dead-zone comparison.
@@ -1275,9 +1275,10 @@ function deleteWord(catId, idx) {
 //                every action before detection re-arms.
 //
 // ─────────────────────────────────────────────────────────────────────
-const TILT_DEAD_ZONE  = 22;   // ±degrees neutral band — balanced for forehead gameplay
-const TILT_SMOOTH_N   = 5;    // moving-average window (low-pass filter)
-const TILT_STREAK     = 4;    // smoothed readings past dead zone to confirm action
+const TILT_CORRECT_DEG = 22;  // degrees below baseline to fire Correct (large range available)
+const TILT_SKIP_DEG    = 10;  // degrees above baseline to fire Skip (limited range face-up)
+const TILT_SMOOTH_N    = 5;   // moving-average window (low-pass filter)
+const TILT_STREAK      = 4;   // smoothed readings past threshold to confirm action
 const TILT_COOLDOWN   = 1500; // ms hard lockout after any action
 const TILT_ARM_DELAY  = 2000; // ms wait before detection first activates
 const TILT_SETTLE_N   = 8;    // raw readings to declare phone "stable"
@@ -1598,13 +1599,13 @@ function onOrientation(e) {
   // Only fire after TILT_STREAK consecutive smoothed readings outside dead zone.
   const delta = smoothed - tiltBaseline;
 
-  if (delta < -TILT_DEAD_ZONE) {
-    // Roll DOWN — top long edge toward ground → Got It
+  if (delta < -TILT_CORRECT_DEG) {
+    // Top tilts forward (toward floor) → Got It
     if (tiltStreakDir !== -1) { tiltStreakDir = -1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doCorrect();
 
-  } else if (delta > TILT_DEAD_ZONE) {
-    // Roll UP — top long edge toward sky → Skip
+  } else if (delta > TILT_SKIP_DEG) {
+    // Top tilts back (toward ceiling) → Skip
     if (tiltStreakDir !== 1) { tiltStreakDir = 1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doPass();
 
