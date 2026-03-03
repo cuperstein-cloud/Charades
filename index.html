@@ -1121,31 +1121,63 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // ── TILT ENGINE ──────────────────────────────────────────────────────
 //
-// 1. DEAD ZONE    ±TILT_DEAD_ZONE° from baseline = neutral, no action
-// 2. SMOOTHING    Moving average of last TILT_SMOOTH_N raw readings
-// 3. DEBOUNCING   TILT_COOLDOWN ms hard lockout after every action
-// 4. AXIS         Pitch only (beta portrait / gamma landscape) — roll & yaw ignored
+// The game is played strictly in landscape, phone pressed against forehead,
+// screen facing the audience.
 //
-const TILT_DEAD_ZONE   = 20;   // ±degrees neutral band around baseline
-const TILT_SMOOTH_N    = 5;    // moving-average window (low-pass filter)
-const TILT_STREAK      = 4;    // smoothed readings past dead zone needed to fire
-const TILT_COOLDOWN    = 1500; // ms hard lockout after any action
-const TILT_ARM_DELAY   = 2000; // ms after game start before detection activates
-const TILT_SETTLE_N    = 8;    // raw readings required to declare phone "stable"
-const TILT_SETTLE_DEG  = 10;   // max spread (°) across settle window
+// 1. AXIS       : Roll = gamma (rotation around the phone's long Y axis).
+//                "Top long edge toward floor" = tilt down.
+//                Pitch (beta) and Yaw (alpha) are explicitly ignored.
+//
+// 2. DIRECTION  : Tilt Down → top long edge toward ground → Got It
+//                Tilt Up   → top long edge toward sky    → Skip
+//                tiltGammaSign normalises direction for landscape-primary vs
+//                landscape-secondary so it never flips between orientations.
+//
+// 3. DEAD ZONE  : ±TILT_DEAD_ZONE° from stable baseline = neutral, no action.
+//
+// 4. SMOOTHING  : Moving average over TILT_SMOOTH_N readings (low-pass filter)
+//                applied before the dead-zone comparison.
+//
+// 5. DEBOUNCE   : TILT_COOLDOWN ms hard lockout + phone must re-settle after
+//                every action before detection re-arms.
+//
+// ─────────────────────────────────────────────────────────────────────
+const TILT_DEAD_ZONE  = 20;   // ±degrees neutral band around baseline
+const TILT_SMOOTH_N   = 5;    // moving-average window (low-pass filter)
+const TILT_STREAK     = 4;    // smoothed readings past dead zone to confirm action
+const TILT_COOLDOWN   = 1500; // ms hard lockout after any action
+const TILT_ARM_DELAY  = 2000; // ms wait before detection first activates
+const TILT_SETTLE_N   = 8;    // raw readings to declare phone "stable"
+const TILT_SETTLE_DEG = 10;   // max spread (°) across those readings
 
-let tiltBaseline    = null;  // averaged resting angle — set only when stable
-let tiltRawBuf      = [];    // rolling raw-reading buffer (smoothing + stability)
-let tiltStreakDir   = 0;     // current streak direction: -1 down / +1 up / 0 none
-let tiltStreakCnt   = 0;     // consecutive readings sustaining current streak
-let tiltArmed       = false; // true once initial baseline is established
-let tiltInCooldown  = false; // true during post-action lockout
-let tiltCooldownEnd = 0;     // timestamp when cooldown expires
-let tiltStartTime   = 0;     // game-start timestamp (for ARM_DELAY)
+let tiltBaseline    = null;  // stable resting gamma — set only when phone is still
+let tiltGammaSign   = 1;     // +1 or -1 — set once at game start, never changes
+let tiltRawBuf      = [];    // rolling raw-reading buffer
+let tiltStreakDir   = 0;     // -1 down / +1 up / 0 none
+let tiltStreakCnt   = 0;
+let tiltArmed       = false;
+let tiltInCooldown  = false;
+let tiltCooldownEnd = 0;
+let tiltStartTime   = 0;
+
+// Reads landscape orientation ONCE at game start using screen.orientation.type
+// (more reliable than window.orientation on iOS).
+// landscape-primary   → gamma decreases when top edge tilts down → sign = +1
+// landscape-secondary → gamma increases when top edge tilts down → sign = -1
+function getLandscapeSign() {
+  try {
+    if (screen.orientation && screen.orientation.type) {
+      return screen.orientation.type === 'landscape-secondary' ? -1 : 1;
+    }
+  } catch(ex) {}
+  const o = typeof window.orientation !== 'undefined' ? window.orientation : 0;
+  return o < 0 ? -1 : 1;
+}
 
 // Full reset — call once at game start
 function initTiltForGame() {
   tiltBaseline    = null;
+  tiltGammaSign   = getLandscapeSign();
   tiltRawBuf      = [];
   tiltStreakDir   = 0;
   tiltStreakCnt   = 0;
@@ -1170,7 +1202,8 @@ function resetTiltState() {
   tiltStreakCnt = 0;
 }
 
-// Checks if raw buffer is stable; if so, updates tiltBaseline and returns true
+// If the last TILT_SETTLE_N readings span ≤ TILT_SETTLE_DEG, records their
+// average as tiltBaseline and returns true.
 function getStableBaseline() {
   if (tiltRawBuf.length < TILT_SETTLE_N) return false;
   const recent = tiltRawBuf.slice(-TILT_SETTLE_N);
@@ -1349,32 +1382,26 @@ function bindOrientation() {
   gameState.orientationBound = true;
 }
 
-// Returns the Pitch value for the current device orientation.
-// Portrait  → beta  (rotation around X axis, front-to-back nod)
-// Landscape → gamma (same physical nod now maps to Y axis; sign adjusted per rotation)
-// Roll (side-to-side) and Yaw (compass) are completely ignored.
+// Returns the Roll (gamma) value, sign-corrected for this landscape orientation.
+// tiltGammaSign is set once at game start — never recalculated mid-game.
+// Result: negative = tilt down (top edge toward floor), positive = tilt up.
+// Pitch (beta) and Yaw (alpha) are ignored entirely.
 function getActiveTilt(e) {
-  const orient = typeof window.orientation !== 'undefined' ? window.orientation : 0;
-  if (Math.abs(orient) === 90) {
-    // orient > 0 (home right): forward nod → gamma decreasing → negative delta ✓
-    // orient < 0 (home left):  forward nod → gamma increasing → negate for same sign ✓
-    return orient > 0 ? (e.gamma || 0) : -(e.gamma || 0);
-  }
-  return e.beta || 0;
+  return (e.gamma || 0) * tiltGammaSign;
 }
 
 function onOrientation(e) {
   if (!gameState.active || gameState.locked) return;
 
-  // ── Read pitch axis only (roll & yaw ignored) ─────────────────────
+  // ── Roll axis only — pitch (beta) and yaw (alpha) ignored ─────────
   const raw = getActiveTilt(e);
 
-  // Feed into rolling buffer (max 20 readings, ~1.2 s at 60 ms/reading)
+  // Rolling buffer — capped at 20 readings (~1.2 s at 60 ms/reading)
   tiltRawBuf.push(raw);
   if (tiltRawBuf.length > 20) tiltRawBuf.shift();
 
-  // ── Phase 1: Initial arm ───────────────────────────────────────────
-  // Wait ARM_DELAY ms, then require the phone to be stable before arming.
+  // ── Phase 1: Initial arm ──────────────────────────────────────────
+  // Wait TILT_ARM_DELAY ms, then require TILT_SETTLE_N stable readings.
   if (!tiltArmed) {
     if (Date.now() - tiltStartTime >= TILT_ARM_DELAY && getStableBaseline()) {
       tiltArmed = true;
@@ -1382,8 +1409,8 @@ function onOrientation(e) {
     return;
   }
 
-  // ── Phase 2: Post-action cooldown (debounce) ───────────────────────
-  // Hard lockout for TILT_COOLDOWN ms, then require phone to re-settle.
+  // ── Phase 2: Debounce / cooldown ─────────────────────────────────
+  // Hard lockout for TILT_COOLDOWN ms; phone must then re-settle.
   if (tiltInCooldown) {
     if (Date.now() >= tiltCooldownEnd && getStableBaseline()) {
       tiltInCooldown = false;
@@ -1393,27 +1420,27 @@ function onOrientation(e) {
     return;
   }
 
-  // ── Phase 3: Low-pass filter (smoothing) ──────────────────────────
-  // Moving average over last TILT_SMOOTH_N readings eliminates jitter/shakes.
+  // ── Phase 3: Low-pass filter ──────────────────────────────────────
+  // Moving average over last TILT_SMOOTH_N readings removes jitter/shakes.
   const slice    = tiltRawBuf.slice(-TILT_SMOOTH_N);
   const smoothed = slice.reduce((a, b) => a + b, 0) / slice.length;
 
-  // ── Phase 4: Dead zone + streak (debounce confirmation) ───────────
-  // Only fire after TILT_STREAK consecutive smoothed readings past the dead zone.
+  // ── Phase 4: Dead zone + streak ───────────────────────────────────
+  // Only fire after TILT_STREAK consecutive smoothed readings outside dead zone.
   const delta = smoothed - tiltBaseline;
 
   if (delta < -TILT_DEAD_ZONE) {
-    // Pitch DOWN past dead zone → Got it
+    // Roll DOWN — top long edge toward ground → Got It
     if (tiltStreakDir !== -1) { tiltStreakDir = -1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doCorrect();
 
   } else if (delta > TILT_DEAD_ZONE) {
-    // Pitch UP past dead zone → Skip
+    // Roll UP — top long edge toward sky → Skip
     if (tiltStreakDir !== 1) { tiltStreakDir = 1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doPass();
 
   } else {
-    // Inside dead zone — neutral, clear streak
+    // Inside dead zone — neutral, reset streak
     tiltStreakDir = 0;
     tiltStreakCnt = 0;
   }
