@@ -708,15 +708,6 @@
       0%   { background-position: 0% center }
       100% { background-position: 200% center }
     }
-    .splash-tap {
-      margin-top: 14px;
-      font-size: 15px;
-      color: rgba(255,255,255,0.6);
-      letter-spacing: 1px;
-      opacity: 0;
-      transition: opacity 0.6s ease;
-    }
-    .splash-tap.visible { opacity: 1; }
   </style>
 </head>
 <body>
@@ -730,7 +721,6 @@
   <div class="splash-overlay"></div>
   <div id="splash-text-wrap" class="splash-text-wrap">
     <div id="splash-msg" class="splash-msg"></div>
-    <div id="splash-tap" class="splash-tap">tap to continue</div>
   </div>
 </div>
 
@@ -1681,10 +1671,7 @@ function runSplashPhase(imgSrc, message, duration, withFireworks, onDone) {
   // Text pop in
   setTimeout(() => { textWrap.classList.add('visible'); }, 1200);
 
-  // Tap hint
-  setTimeout(() => { tapEl.classList.add('visible'); }, duration - 1500);
-
-  // Confetti & fireworks
+// Confetti & fireworks
   setTimeout(() => {
     confettiStart = Date.now();
     if (withFireworks) {
