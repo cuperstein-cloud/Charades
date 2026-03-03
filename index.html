@@ -8,7 +8,7 @@
   <title>Charades!</title>
   <style>
     :root {
-      --bg: #7f0000;
+      --bg: #0a1628;
       --card: #1e293b;
       --blue: #3b82f6;
       --blue-light: #93c5fd;
@@ -42,7 +42,7 @@
 
     /* ── HOME ── */
     #screen-home {
-      background: linear-gradient(160deg, #7f0000 0%, #b91c1c 100%);
+      background: linear-gradient(160deg, #0a1628 0%, #0f2a4a 100%);
     }
     .home-header {
       width: 100%;
@@ -316,7 +316,7 @@
 
     /* ── READY ── */
     #screen-ready {
-      background: linear-gradient(160deg, #7f0000, #b91c1c);
+      background: linear-gradient(160deg, #0a1628, #0f2a4a);
       padding: 40px 28px;
       text-align: center;
       justify-content: center;
@@ -368,7 +368,7 @@
 
     /* ── GAME ── */
     #screen-game {
-      background: #7f0000;
+      background: #0a1628;
       overflow: hidden;
     }
     .game-flash {
@@ -479,7 +479,7 @@
 
     /* ── RESULTS ── */
     #screen-results {
-      background: linear-gradient(160deg, #7f0000, #b91c1c);
+      background: linear-gradient(160deg, #0a1628, #0f2a4a);
     }
     .results-header {
       width: 100%;
@@ -1119,58 +1119,64 @@ function deleteWord(catId, idx) {
 // ════════════════════════════════════════
 // GAME ENGINE
 // ════════════════════════════════════════
-const TILT_DELTA_DOWN  = 35;   // degrees down from baseline → got it
-const TILT_DELTA_UP    = 30;   // degrees up from baseline → skip
-const TILT_STREAK_DOWN = 3;    // consecutive readings to confirm got it
-const TILT_STREAK_UP   = 3;    // consecutive readings to confirm skip
-const TILT_MIN_WAIT    = 1500; // ms minimum recovery time after any action
-const TILT_SETTLE_N    = 8;    // readings needed to declare "stable" (~480ms at 60ms/reading)
-const TILT_SETTLE_ZONE = 10;   // degrees max spread across those readings = stable
-const TILT_ARM_DELAY   = 2000; // ms to wait after game start before arming tilt at all
+// ── TILT ENGINE ──────────────────────────────────────────────────────
+//
+// 1. DEAD ZONE    ±TILT_DEAD_ZONE° from baseline = neutral, no action
+// 2. SMOOTHING    Moving average of last TILT_SMOOTH_N raw readings
+// 3. DEBOUNCING   TILT_COOLDOWN ms hard lockout after every action
+// 4. AXIS         Pitch only (beta portrait / gamma landscape) — roll & yaw ignored
+//
+const TILT_DEAD_ZONE   = 20;   // ±degrees neutral band around baseline
+const TILT_SMOOTH_N    = 5;    // moving-average window (low-pass filter)
+const TILT_STREAK      = 4;    // smoothed readings past dead zone needed to fire
+const TILT_COOLDOWN    = 1500; // ms hard lockout after any action
+const TILT_ARM_DELAY   = 2000; // ms after game start before detection activates
+const TILT_SETTLE_N    = 8;    // raw readings required to declare phone "stable"
+const TILT_SETTLE_DEG  = 10;   // max spread (°) across settle window
 
-let tiltBase       = null;   // baseline — set only when phone is stable
-let tiltCount      = 0;
-let tiltDir        = 0;
-let tiltWaiting    = false;  // true = recovering after an action
-let tiltActionTime = 0;
-let tiltHistory    = [];     // rolling window of recent tilt readings
-let tiltArmed      = false;  // false until initial settle completes
-let tiltStartTime  = 0;      // timestamp of game start, for ARM_DELAY
+let tiltBaseline    = null;  // averaged resting angle — set only when stable
+let tiltRawBuf      = [];    // rolling raw-reading buffer (smoothing + stability)
+let tiltStreakDir   = 0;     // current streak direction: -1 down / +1 up / 0 none
+let tiltStreakCnt   = 0;     // consecutive readings sustaining current streak
+let tiltArmed       = false; // true once initial baseline is established
+let tiltInCooldown  = false; // true during post-action lockout
+let tiltCooldownEnd = 0;     // timestamp when cooldown expires
+let tiltStartTime   = 0;     // game-start timestamp (for ARM_DELAY)
 
-// Full reset at game start
+// Full reset — call once at game start
 function initTiltForGame() {
-  tiltBase       = null;
-  tiltCount      = 0;
-  tiltDir        = 0;
-  tiltWaiting    = false;
-  tiltActionTime = 0;
-  tiltHistory    = [];
-  tiltArmed      = false;
-  tiltStartTime  = Date.now();
+  tiltBaseline    = null;
+  tiltRawBuf      = [];
+  tiltStreakDir   = 0;
+  tiltStreakCnt   = 0;
+  tiltArmed       = false;
+  tiltInCooldown  = false;
+  tiltCooldownEnd = 0;
+  tiltStartTime   = Date.now();
 }
 
-// Called after each action — enter recovery; phone must re-settle before next action
+// Called after each action — starts cooldown and flushes buffer for fresh re-arm
 function onTiltAction() {
-  tiltCount      = 0;
-  tiltDir        = 0;
-  tiltWaiting    = true;
-  tiltActionTime = Date.now();
-  tiltHistory    = [];   // flush history so stability check uses fresh readings
+  tiltStreakDir   = 0;
+  tiltStreakCnt   = 0;
+  tiltInCooldown  = true;
+  tiltCooldownEnd = Date.now() + TILT_COOLDOWN;
+  tiltRawBuf      = [];
 }
 
-// Called on each new word — resets streak only
+// Called on each new word — clears streak only, baseline stays
 function resetTiltState() {
-  tiltCount = 0;
-  tiltDir   = 0;
+  tiltStreakDir = 0;
+  tiltStreakCnt = 0;
 }
 
-// Returns true + sets tiltBase if last TILT_SETTLE_N readings are within TILT_SETTLE_ZONE
-function checkStable() {
-  if (tiltHistory.length < TILT_SETTLE_N) return false;
-  const recent = tiltHistory.slice(-TILT_SETTLE_N);
+// Checks if raw buffer is stable; if so, updates tiltBaseline and returns true
+function getStableBaseline() {
+  if (tiltRawBuf.length < TILT_SETTLE_N) return false;
+  const recent = tiltRawBuf.slice(-TILT_SETTLE_N);
   const spread = Math.max(...recent) - Math.min(...recent);
-  if (spread > TILT_SETTLE_ZONE) return false;
-  tiltBase = recent.reduce((a, b) => a + b, 0) / TILT_SETTLE_N;
+  if (spread > TILT_SETTLE_DEG) return false;
+  tiltBaseline = recent.reduce((a, b) => a + b, 0) / TILT_SETTLE_N;
   return true;
 }
 
@@ -1343,13 +1349,15 @@ function bindOrientation() {
   gameState.orientationBound = true;
 }
 
-// Returns the tilt value for the current device orientation.
-// In landscape the "nod" forward/backward maps to the gamma axis, not beta.
-// orient=90  (home button right): forward nod = gamma decreases → negative delta = got-it ✓
-// orient=-90 (home button left):  forward nod = gamma increases → negate to get negative ✓
+// Returns the Pitch value for the current device orientation.
+// Portrait  → beta  (rotation around X axis, front-to-back nod)
+// Landscape → gamma (same physical nod now maps to Y axis; sign adjusted per rotation)
+// Roll (side-to-side) and Yaw (compass) are completely ignored.
 function getActiveTilt(e) {
   const orient = typeof window.orientation !== 'undefined' ? window.orientation : 0;
   if (Math.abs(orient) === 90) {
+    // orient > 0 (home right): forward nod → gamma decreasing → negative delta ✓
+    // orient < 0 (home left):  forward nod → gamma increasing → negate for same sign ✓
     return orient > 0 ? (e.gamma || 0) : -(e.gamma || 0);
   }
   return e.beta || 0;
@@ -1358,49 +1366,56 @@ function getActiveTilt(e) {
 function onOrientation(e) {
   if (!gameState.active || gameState.locked) return;
 
-  const beta = getActiveTilt(e);
-  if (beta === null || beta === undefined) return;
+  // ── Read pitch axis only (roll & yaw ignored) ─────────────────────
+  const raw = getActiveTilt(e);
 
-  // Maintain rolling history
-  tiltHistory.push(beta);
-  if (tiltHistory.length > 10) tiltHistory.shift();
+  // Feed into rolling buffer (max 20 readings, ~1.2 s at 60 ms/reading)
+  tiltRawBuf.push(raw);
+  if (tiltRawBuf.length > 20) tiltRawBuf.shift();
 
-  // Phase 1: Initial arm — wait 2 seconds AND for phone to settle on forehead
+  // ── Phase 1: Initial arm ───────────────────────────────────────────
+  // Wait ARM_DELAY ms, then require the phone to be stable before arming.
   if (!tiltArmed) {
-    if (Date.now() - tiltStartTime >= TILT_ARM_DELAY && checkStable()) {
+    if (Date.now() - tiltStartTime >= TILT_ARM_DELAY && getStableBaseline()) {
       tiltArmed = true;
     }
     return;
   }
 
-  // Phase 2: Post-action recovery — wait for min time AND phone to re-settle
-  if (tiltWaiting) {
-    if (Date.now() - tiltActionTime >= TILT_MIN_WAIT && checkStable()) {
-      tiltWaiting = false;
-      tiltCount   = 0;
-      tiltDir     = 0;
-      // tiltBase was already updated by checkStable()
+  // ── Phase 2: Post-action cooldown (debounce) ───────────────────────
+  // Hard lockout for TILT_COOLDOWN ms, then require phone to re-settle.
+  if (tiltInCooldown) {
+    if (Date.now() >= tiltCooldownEnd && getStableBaseline()) {
+      tiltInCooldown = false;
+      tiltStreakDir  = 0;
+      tiltStreakCnt  = 0;
     }
     return;
   }
 
-  // Phase 3: Active detection
-  const delta = beta - tiltBase;
+  // ── Phase 3: Low-pass filter (smoothing) ──────────────────────────
+  // Moving average over last TILT_SMOOTH_N readings eliminates jitter/shakes.
+  const slice    = tiltRawBuf.slice(-TILT_SMOOTH_N);
+  const smoothed = slice.reduce((a, b) => a + b, 0) / slice.length;
 
-  if (delta < -TILT_DELTA_DOWN) {
-    // Tilting down → Got it
-    if (tiltDir !== -1) { tiltDir = -1; tiltCount = 0; }
-    if (++tiltCount >= TILT_STREAK_DOWN) doCorrect();
+  // ── Phase 4: Dead zone + streak (debounce confirmation) ───────────
+  // Only fire after TILT_STREAK consecutive smoothed readings past the dead zone.
+  const delta = smoothed - tiltBaseline;
 
-  } else if (delta > TILT_DELTA_UP) {
-    // Tilting up → Skip
-    if (tiltDir !== 1) { tiltDir = 1; tiltCount = 0; }
-    if (++tiltCount >= TILT_STREAK_UP) doPass();
+  if (delta < -TILT_DEAD_ZONE) {
+    // Pitch DOWN past dead zone → Got it
+    if (tiltStreakDir !== -1) { tiltStreakDir = -1; tiltStreakCnt = 0; }
+    if (++tiltStreakCnt >= TILT_STREAK) doCorrect();
+
+  } else if (delta > TILT_DEAD_ZONE) {
+    // Pitch UP past dead zone → Skip
+    if (tiltStreakDir !== 1) { tiltStreakDir = 1; tiltStreakCnt = 0; }
+    if (++tiltStreakCnt >= TILT_STREAK) doPass();
 
   } else {
-    // Neutral zone — reset streak
-    tiltDir   = 0;
-    tiltCount = 0;
+    // Inside dead zone — neutral, clear streak
+    tiltStreakDir = 0;
+    tiltStreakCnt = 0;
   }
 }
 
