@@ -854,6 +854,10 @@
     <div class="game-word-num" id="g-wnum">15</div>
   </div>
 
+  <!-- DEBUG OVERLAY — remove once tilt is confirmed working -->
+  <div id="tilt-debug" style="position:absolute;bottom:8px;left:8px;right:8px;background:rgba(0,0,0,0.6);color:#0f0;font-family:monospace;font-size:11px;padding:6px 8px;border-radius:8px;z-index:99;line-height:1.6;pointer-events:none;">
+    waiting for motion events…
+  </div>
 </div>
 
 <!-- ═══════════ RESULTS ═══════════ -->
@@ -1276,12 +1280,10 @@ function deleteWord(catId, idx) {
 // ─────────────────────────────────────────────────────────────────────
 const TILT_CORRECT_G  = 2.5;  // m/s² below baseline → Correct (~15° tilt)
 const TILT_SKIP_G     = 1.2;  // m/s² above baseline → Skip  (~7° tilt)
-const TILT_SMOOTH_N   = 5;    // moving-average window
-const TILT_STREAK     = 4;    // consecutive readings past threshold to fire
+const TILT_SMOOTH_N   = 6;    // moving-average window
+const TILT_STREAK     = 3;    // consecutive smoothed readings past threshold
 const TILT_COOLDOWN   = 1500; // ms lockout after any action
-const TILT_ARM_DELAY  = 1500; // ms before detection first activates
-const TILT_SETTLE_N   = 5;    // readings required to declare phone "stable"
-const TILT_SETTLE_G   = 1.5;  // max spread (m/s²) across those readings
+const TILT_ARM_MS     = 1500; // ms of readings to collect before arming
 
 let tiltBaseline    = null;
 let tiltRawBuf      = [];
@@ -1290,8 +1292,9 @@ let tiltStreakCnt   = 0;
 let tiltArmed       = false;
 let tiltInCooldown  = false;
 let tiltCooldownEnd = 0;
-let tiltStartTime   = 0;
+let tiltArmEnd      = 0;
 let motionSign      = null;   // +1 or -1, detected from first z reading
+let motionEvtCount  = 0;      // debug counter
 
 // Full reset — call once at game start
 function initTiltForGame() {
@@ -1302,17 +1305,17 @@ function initTiltForGame() {
   tiltArmed       = false;
   tiltInCooldown  = false;
   tiltCooldownEnd = 0;
-  tiltStartTime   = Date.now();
+  tiltArmEnd      = Date.now() + TILT_ARM_MS;
   motionSign      = null;
+  motionEvtCount  = 0;
 }
 
-// Called after each action — starts cooldown and flushes buffer for fresh re-arm
+// Called after each action — starts cooldown (buffer kept for resetBaseline)
 function onTiltAction() {
   tiltStreakDir   = 0;
   tiltStreakCnt   = 0;
   tiltInCooldown  = true;
   tiltCooldownEnd = Date.now() + TILT_COOLDOWN;
-  tiltRawBuf      = [];
 }
 
 // Called on each new word — clears streak only, baseline stays
@@ -1321,15 +1324,18 @@ function resetTiltState() {
   tiltStreakCnt = 0;
 }
 
-// If the last TILT_SETTLE_N readings span ≤ TILT_SETTLE_G m/s², records their
-// average as tiltBaseline and returns true.
-function getStableBaseline() {
-  if (tiltRawBuf.length < TILT_SETTLE_N) return false;
-  const recent = tiltRawBuf.slice(-TILT_SETTLE_N);
-  const spread = Math.max(...recent) - Math.min(...recent);
-  if (spread > TILT_SETTLE_G) return false;
-  tiltBaseline = recent.reduce((a, b) => a + b, 0) / TILT_SETTLE_N;
-  return true;
+// Sets baseline to the average of all readings collected so far.
+// No stability check — called once after arm delay expires.
+function setBaseline() {
+  if (tiltRawBuf.length === 0) return;
+  tiltBaseline = tiltRawBuf.reduce((a, b) => a + b, 0) / tiltRawBuf.length;
+}
+
+// Resets baseline from the last TILT_SMOOTH_N readings after a cooldown.
+function resetBaseline() {
+  if (tiltRawBuf.length === 0) return;
+  const recent = tiltRawBuf.slice(-TILT_SMOOTH_N);
+  tiltBaseline = recent.reduce((a, b) => a + b, 0) / recent.length;
 }
 
 const gameState = {
@@ -1543,34 +1549,52 @@ function bindMotion() {
 }
 
 function onMotion(e) {
-  if (!gameState.active || gameState.locked) return;
+  motionEvtCount++;
   const g = e.accelerationIncludingGravity;
+
+  // Update debug overlay every 10 events
+  if (motionEvtCount % 10 === 0) {
+    const dbg = document.getElementById('tilt-debug');
+    if (dbg) {
+      const yRaw = g ? (g.y || 0).toFixed(2) : 'null';
+      const zRaw = g ? (g.z || 0).toFixed(2) : 'null';
+      const state = !tiltArmed ? 'ARMING' : tiltInCooldown ? 'COOLDOWN' : 'ARMED';
+      const delta = (tiltBaseline !== null && g) ?
+        ((g.y || 0) * (motionSign || 1) - tiltBaseline).toFixed(2) : '—';
+      dbg.textContent =
+        `events:${motionEvtCount}  sign:${motionSign}  state:${state}\n` +
+        `y=${yRaw}  z=${zRaw}  Δ=${delta}  base=${tiltBaseline !== null ? tiltBaseline.toFixed(2) : '—'}`;
+    }
+  }
+
+  if (!gameState.active || gameState.locked) return;
   if (!g) return;
 
-  // Auto-detect iOS vs spec sign convention from the z axis.
-  // Face-up: spec/Android → z ≈ -9.8, iOS → z ≈ +9.8.
-  // We need y-negative when portrait-top tilts toward floor.
-  // On iOS that requires negating y, on Android we keep it as-is.
-  if (motionSign === null && g.z != null && Math.abs(g.z) > 4) {
+  // Detect iOS vs spec sign from z. Face-up: iOS z≈+9.8, Android z≈-9.8.
+  if (motionSign === null && g.z != null && Math.abs(g.z) > 3) {
     motionSign = g.z < 0 ? 1 : -1;
   }
   const sign = motionSign !== null ? motionSign : 1;
   const raw = (g.y || 0) * sign;
 
   tiltRawBuf.push(raw);
-  if (tiltRawBuf.length > 20) tiltRawBuf.shift();
+  if (tiltRawBuf.length > 30) tiltRawBuf.shift();
 
-  // ── Phase 1: Initial arm ──────────────────────────────────────────
+  const now = Date.now();
+
+  // ── Phase 1: Arm — collect readings for TILT_ARM_MS, then set baseline ──
   if (!tiltArmed) {
-    if (Date.now() - tiltStartTime >= TILT_ARM_DELAY && getStableBaseline()) {
+    if (now >= tiltArmEnd && tiltRawBuf.length >= TILT_SMOOTH_N) {
+      setBaseline();
       tiltArmed = true;
     }
     return;
   }
 
-  // ── Phase 2: Debounce / cooldown ─────────────────────────────────
+  // ── Phase 2: Cooldown — wait, then recalibrate baseline ──────────────
   if (tiltInCooldown) {
-    if (Date.now() >= tiltCooldownEnd && getStableBaseline()) {
+    if (now >= tiltCooldownEnd) {
+      resetBaseline();
       tiltInCooldown = false;
       tiltStreakDir  = 0;
       tiltStreakCnt  = 0;
@@ -1578,23 +1602,17 @@ function onMotion(e) {
     return;
   }
 
-  // ── Phase 3: Low-pass filter ──────────────────────────────────────
+  // ── Phase 3: Smooth + threshold + streak ─────────────────────────────
   const slice    = tiltRawBuf.slice(-TILT_SMOOTH_N);
   const smoothed = slice.reduce((a, b) => a + b, 0) / slice.length;
-
-  // ── Phase 4: Threshold + streak ───────────────────────────────────
-  const delta = smoothed - tiltBaseline;
+  const delta    = smoothed - tiltBaseline;
 
   if (delta < -TILT_CORRECT_G) {
-    // Portrait-top toward floor → Got It
     if (tiltStreakDir !== -1) { tiltStreakDir = -1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doCorrect();
-
   } else if (delta > TILT_SKIP_G) {
-    // Portrait-top toward ceiling → Skip
     if (tiltStreakDir !== 1) { tiltStreakDir = 1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doPass();
-
   } else {
     tiltStreakDir = 0;
     tiltStreakCnt = 0;
