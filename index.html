@@ -1257,61 +1257,48 @@ function deleteWord(catId, idx) {
 // The game is played strictly in landscape, phone pressed against forehead,
 // screen facing the audience.
 //
-// 1. AXIS       : Roll = gamma (rotation around the phone's long Y axis).
-//                "Top long edge toward floor" = tilt down.
-//                Pitch (beta) and Yaw (alpha) are explicitly ignored.
-//
-// 2. DIRECTION  : Tilt Down → top long edge toward ground → Got It
-//                Tilt Up   → top long edge toward sky    → Skip
-//                tiltGammaSign normalises direction for landscape-primary vs
-//                landscape-secondary so it never flips between orientations.
-//
-// 3. DEAD ZONE  : asymmetric — TILT_CORRECT_DEG forward, TILT_SKIP_DEG backward.
-//
-// 4. SMOOTHING  : Moving average over TILT_SMOOTH_N readings (low-pass filter)
-//                applied before the dead-zone comparison.
-//
-// 5. DEBOUNCE   : TILT_COOLDOWN ms hard lockout + phone must re-settle after
-//                every action before detection re-arms.
-//
 // ─────────────────────────────────────────────────────────────────────
-const TILT_CORRECT_DEG = 22;  // degrees below baseline to fire Correct (large range available)
-const TILT_SKIP_DEG    = 10;  // degrees above baseline to fire Skip (limited range face-up)
-const TILT_SMOOTH_N    = 5;   // moving-average window (low-pass filter)
-const TILT_STREAK      = 4;   // smoothed readings past threshold to confirm action
-const TILT_COOLDOWN   = 1500; // ms hard lockout after any action
-const TILT_ARM_DELAY  = 2000; // ms wait before detection first activates
-const TILT_SETTLE_N   = 8;    // raw readings to declare phone "stable"
-const TILT_SETTLE_DEG = 10;   // max spread (°) across those readings
+// TILT DETECTION — uses devicemotion accelerationIncludingGravity.y
+//
+// WHY accelerometer, not deviceorientation:
+//   Beta/gamma are Euler angles. At landscape-face-up the device is near
+//   gimbal lock, making beta's sign flip unpredictably between landscape-left
+//   and landscape-right. The raw gravity Y component has no such problem:
+//   it is always negative when the portrait-top edge tilts toward the floor
+//   and positive when it tilts toward the ceiling, regardless of which way
+//   the phone is rotated in landscape.
+//
+// SIGNAL  : accelerationIncludingGravity.y  (m/s², ≈ –9.8 to +9.8)
+//   face-up flat          → y ≈  0
+//   top tilts toward floor → y goes negative  → Correct
+//   top tilts toward ceil  → y goes positive  → Skip
+//
+// THRESHOLDS (m/s²):
+//   TILT_CORRECT_G : forward tilt has a large range (~90°), so 2.5 m/s² ≈ 15°
+//   TILT_SKIP_G    : backward tilt is constrained (phone is face-up), so 1.5 m/s² ≈ 9°
+//   TILT_SETTLE_G  : max spread for "phone is still" check
+// ─────────────────────────────────────────────────────────────────────
+const TILT_CORRECT_G  = 2.5;  // m/s² below baseline → Correct
+const TILT_SKIP_G     = 1.5;  // m/s² above baseline → Skip
+const TILT_SMOOTH_N   = 5;    // moving-average window
+const TILT_STREAK     = 4;    // consecutive smoothed readings past threshold
+const TILT_COOLDOWN   = 1500; // ms lockout after any action
+const TILT_ARM_DELAY  = 2000; // ms before detection first activates
+const TILT_SETTLE_N   = 8;    // readings to declare phone "stable"
+const TILT_SETTLE_G   = 0.4;  // max spread (m/s²) across those readings
 
-let tiltBaseline    = null;  // stable resting gamma — set only when phone is still
-let tiltGammaSign   = 1;     // +1 or -1 — set once at game start, never changes
-let tiltRawBuf      = [];    // rolling raw-reading buffer
-let tiltStreakDir   = 0;     // -1 down / +1 up / 0 none
+let tiltBaseline    = null;
+let tiltRawBuf      = [];
+let tiltStreakDir   = 0;
 let tiltStreakCnt   = 0;
 let tiltArmed       = false;
 let tiltInCooldown  = false;
 let tiltCooldownEnd = 0;
 let tiltStartTime   = 0;
 
-// Reads landscape orientation ONCE at game start using screen.orientation.type
-// (more reliable than window.orientation on iOS).
-// landscape-primary   → gamma decreases when top edge tilts down → sign = +1
-// landscape-secondary → gamma increases when top edge tilts down → sign = -1
-function getLandscapeSign() {
-  try {
-    if (screen.orientation && screen.orientation.type) {
-      return screen.orientation.type === 'landscape-secondary' ? -1 : 1;
-    }
-  } catch(ex) {}
-  const o = typeof window.orientation !== 'undefined' ? window.orientation : 0;
-  return o < 0 ? -1 : 1;
-}
-
 // Full reset — call once at game start
 function initTiltForGame() {
   tiltBaseline    = null;
-  tiltGammaSign   = getLandscapeSign();
   tiltRawBuf      = [];
   tiltStreakDir   = 0;
   tiltStreakCnt   = 0;
@@ -1336,13 +1323,13 @@ function resetTiltState() {
   tiltStreakCnt = 0;
 }
 
-// If the last TILT_SETTLE_N readings span ≤ TILT_SETTLE_DEG, records their
+// If the last TILT_SETTLE_N readings span ≤ TILT_SETTLE_G m/s², records their
 // average as tiltBaseline and returns true.
 function getStableBaseline() {
   if (tiltRawBuf.length < TILT_SETTLE_N) return false;
   const recent = tiltRawBuf.slice(-TILT_SETTLE_N);
   const spread = Math.max(...recent) - Math.min(...recent);
-  if (spread > TILT_SETTLE_DEG) return false;
+  if (spread > TILT_SETTLE_G) return false;
   tiltBaseline = recent.reduce((a, b) => a + b, 0) / TILT_SETTLE_N;
   return true;
 }
@@ -1427,7 +1414,7 @@ function stopGame(showResults) {
   clearInterval(gameState.gameTimer);
   clearInterval(gameState.wordTimer);
   if (gameState.orientationBound) {
-    window.removeEventListener('deviceorientation', onOrientation);
+    window.removeEventListener('devicemotion', onMotion);
     gameState.orientationBound = false;
   }
   releaseWakeLock();
@@ -1532,47 +1519,42 @@ function flash(color, msg) {
 }
 
 // ════════════════════════════════════════
-// DEVICE ORIENTATION (tilt detection)
+// DEVICE MOTION (tilt detection)
 // ════════════════════════════════════════
 function requestOrientationPermission() {
-  if (typeof DeviceOrientationEvent !== 'undefined' &&
-      typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission()
-      .then(r => { if (r === 'granted') bindOrientation(); })
+  if (typeof DeviceMotionEvent !== 'undefined' &&
+      typeof DeviceMotionEvent.requestPermission === 'function') {
+    DeviceMotionEvent.requestPermission()
+      .then(r => { if (r === 'granted') bindMotion(); })
       .catch(() => {});
-  } else if (typeof DeviceOrientationEvent !== 'undefined') {
-    bindOrientation();
+  } else if (typeof DeviceMotionEvent !== 'undefined') {
+    bindMotion();
   }
 }
 
-function bindOrientation() {
+function bindMotion() {
   if (gameState.orientationBound) return;
-  window.addEventListener('deviceorientation', onOrientation);
+  window.addEventListener('devicemotion', onMotion);
   gameState.orientationBound = true;
 }
 
-// Returns the Roll (gamma) value, sign-corrected for this landscape orientation.
-// tiltGammaSign is set once at game start — never recalculated mid-game.
-// Beta measures top-vs-bottom tilt, but its sign flips between landscape-left and
-// landscape-right (because the portrait X-axis physically points up vs down).
-// tiltGammaSign corrects for this: landscape-primary = +1, landscape-secondary = -1.
-// Result after correction: negative = top tilts forward (correct), positive = top tilts back (skip).
-function getActiveTilt(e) {
-  return (e.beta || 0) * tiltGammaSign;
-}
-
-function onOrientation(e) {
+function onMotion(e) {
   if (!gameState.active || gameState.locked) return;
+  const g = e.accelerationIncludingGravity;
+  if (!g) return;
 
-  // ── Roll axis only — pitch (beta) and yaw (alpha) ignored ─────────
-  const raw = getActiveTilt(e);
+  // accelerationIncludingGravity.y measures the gravity component along the
+  // portrait-Y axis (points toward the physical top of the phone in portrait).
+  // face-up flat          → y ≈  0
+  // portrait-top toward floor → y negative  → Correct
+  // portrait-top toward ceil  → y positive  → Skip
+  // This sign is consistent in landscape-left AND landscape-right.
+  const raw = g.y || 0;
 
-  // Rolling buffer — capped at 20 readings (~1.2 s at 60 ms/reading)
   tiltRawBuf.push(raw);
   if (tiltRawBuf.length > 20) tiltRawBuf.shift();
 
   // ── Phase 1: Initial arm ──────────────────────────────────────────
-  // Wait TILT_ARM_DELAY ms, then require TILT_SETTLE_N stable readings.
   if (!tiltArmed) {
     if (Date.now() - tiltStartTime >= TILT_ARM_DELAY && getStableBaseline()) {
       tiltArmed = true;
@@ -1581,7 +1563,6 @@ function onOrientation(e) {
   }
 
   // ── Phase 2: Debounce / cooldown ─────────────────────────────────
-  // Hard lockout for TILT_COOLDOWN ms; phone must then re-settle.
   if (tiltInCooldown) {
     if (Date.now() >= tiltCooldownEnd && getStableBaseline()) {
       tiltInCooldown = false;
@@ -1592,26 +1573,23 @@ function onOrientation(e) {
   }
 
   // ── Phase 3: Low-pass filter ──────────────────────────────────────
-  // Moving average over last TILT_SMOOTH_N readings removes jitter/shakes.
   const slice    = tiltRawBuf.slice(-TILT_SMOOTH_N);
   const smoothed = slice.reduce((a, b) => a + b, 0) / slice.length;
 
-  // ── Phase 4: Dead zone + streak ───────────────────────────────────
-  // Only fire after TILT_STREAK consecutive smoothed readings outside dead zone.
+  // ── Phase 4: Threshold + streak ───────────────────────────────────
   const delta = smoothed - tiltBaseline;
 
-  if (delta < -TILT_CORRECT_DEG) {
-    // Top tilts forward (toward floor) → Got It
+  if (delta < -TILT_CORRECT_G) {
+    // Portrait-top toward floor → Got It
     if (tiltStreakDir !== -1) { tiltStreakDir = -1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doCorrect();
 
-  } else if (delta > TILT_SKIP_DEG) {
-    // Top tilts back (toward ceiling) → Skip
+  } else if (delta > TILT_SKIP_G) {
+    // Portrait-top toward ceiling → Skip
     if (tiltStreakDir !== 1) { tiltStreakDir = 1; tiltStreakCnt = 0; }
     if (++tiltStreakCnt >= TILT_STREAK) doPass();
 
   } else {
-    // Inside dead zone — neutral, reset streak
     tiltStreakDir = 0;
     tiltStreakCnt = 0;
   }
