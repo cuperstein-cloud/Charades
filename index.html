@@ -1260,32 +1260,28 @@ function deleteWord(catId, idx) {
 // ─────────────────────────────────────────────────────────────────────
 // TILT DETECTION — uses devicemotion accelerationIncludingGravity.y
 //
-// WHY accelerometer, not deviceorientation:
-//   Beta/gamma are Euler angles. At landscape-face-up the device is near
-//   gimbal lock, making beta's sign flip unpredictably between landscape-left
-//   and landscape-right. The raw gravity Y component has no such problem:
-//   it is always negative when the portrait-top edge tilts toward the floor
-//   and positive when it tilts toward the ceiling, regardless of which way
-//   the phone is rotated in landscape.
-//
 // SIGNAL  : accelerationIncludingGravity.y  (m/s², ≈ –9.8 to +9.8)
-//   face-up flat          → y ≈  0
-//   top tilts toward floor → y goes negative  → Correct
-//   top tilts toward ceil  → y goes positive  → Skip
+//   face-up flat           → y ≈  0
+//   portrait-top → floor   → y negative  → Correct (same sign both landscape orientations)
+//   portrait-top → ceiling → y positive  → Skip
 //
-// THRESHOLDS (m/s²):
-//   TILT_CORRECT_G : forward tilt has a large range (~90°), so 2.5 m/s² ≈ 15°
-//   TILT_SKIP_G    : backward tilt is constrained (phone is face-up), so 1.5 m/s² ≈ 9°
-//   TILT_SETTLE_G  : max spread for "phone is still" check
+// iOS SIGN: iOS Safari inverts the gravity vector vs the W3C spec.
+//   We auto-detect on first event by checking the sign of z (face-up → z near ±9.8):
+//   spec/Android: z ≈ -9.8  →  motionSign = +1  (keep y as-is)
+//   iOS:          z ≈ +9.8  →  motionSign = -1  (negate y)
+//
+// SETTLE THRESHOLD: set generously (1.5 m/s² over 5 readings) because
+//   normal hand tremor easily produces spreads of 1–3 m/s². A threshold
+//   that is too tight means tiltArmed never becomes true.
 // ─────────────────────────────────────────────────────────────────────
-const TILT_CORRECT_G  = 2.5;  // m/s² below baseline → Correct
-const TILT_SKIP_G     = 1.5;  // m/s² above baseline → Skip
+const TILT_CORRECT_G  = 2.5;  // m/s² below baseline → Correct (~15° tilt)
+const TILT_SKIP_G     = 1.2;  // m/s² above baseline → Skip  (~7° tilt)
 const TILT_SMOOTH_N   = 5;    // moving-average window
-const TILT_STREAK     = 4;    // consecutive smoothed readings past threshold
+const TILT_STREAK     = 4;    // consecutive readings past threshold to fire
 const TILT_COOLDOWN   = 1500; // ms lockout after any action
-const TILT_ARM_DELAY  = 2000; // ms before detection first activates
-const TILT_SETTLE_N   = 8;    // readings to declare phone "stable"
-const TILT_SETTLE_G   = 0.4;  // max spread (m/s²) across those readings
+const TILT_ARM_DELAY  = 1500; // ms before detection first activates
+const TILT_SETTLE_N   = 5;    // readings required to declare phone "stable"
+const TILT_SETTLE_G   = 1.5;  // max spread (m/s²) across those readings
 
 let tiltBaseline    = null;
 let tiltRawBuf      = [];
@@ -1295,6 +1291,7 @@ let tiltArmed       = false;
 let tiltInCooldown  = false;
 let tiltCooldownEnd = 0;
 let tiltStartTime   = 0;
+let motionSign      = null;   // +1 or -1, detected from first z reading
 
 // Full reset — call once at game start
 function initTiltForGame() {
@@ -1306,6 +1303,7 @@ function initTiltForGame() {
   tiltInCooldown  = false;
   tiltCooldownEnd = 0;
   tiltStartTime   = Date.now();
+  motionSign      = null;
 }
 
 // Called after each action — starts cooldown and flushes buffer for fresh re-arm
@@ -1525,7 +1523,13 @@ function requestOrientationPermission() {
   if (typeof DeviceMotionEvent !== 'undefined' &&
       typeof DeviceMotionEvent.requestPermission === 'function') {
     DeviceMotionEvent.requestPermission()
-      .then(r => { if (r === 'granted') bindMotion(); })
+      .then(r => {
+        if (r === 'granted') {
+          bindMotion();
+        } else {
+          alert('Motion permission denied. Go to Settings → Safari → Motion & Orientation Access and enable it, then reload.');
+        }
+      })
       .catch(() => {});
   } else if (typeof DeviceMotionEvent !== 'undefined') {
     bindMotion();
@@ -1543,13 +1547,15 @@ function onMotion(e) {
   const g = e.accelerationIncludingGravity;
   if (!g) return;
 
-  // accelerationIncludingGravity.y measures the gravity component along the
-  // portrait-Y axis (points toward the physical top of the phone in portrait).
-  // face-up flat          → y ≈  0
-  // portrait-top toward floor → y negative  → Correct
-  // portrait-top toward ceil  → y positive  → Skip
-  // This sign is consistent in landscape-left AND landscape-right.
-  const raw = g.y || 0;
+  // Auto-detect iOS vs spec sign convention from the z axis.
+  // Face-up: spec/Android → z ≈ -9.8, iOS → z ≈ +9.8.
+  // We need y-negative when portrait-top tilts toward floor.
+  // On iOS that requires negating y, on Android we keep it as-is.
+  if (motionSign === null && g.z != null && Math.abs(g.z) > 4) {
+    motionSign = g.z < 0 ? 1 : -1;
+  }
+  const sign = motionSign !== null ? motionSign : 1;
+  const raw = (g.y || 0) * sign;
 
   tiltRawBuf.push(raw);
   if (tiltRawBuf.length > 20) tiltRawBuf.shift();
