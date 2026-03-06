@@ -854,10 +854,6 @@
     <div class="game-word-num" id="g-wnum">15</div>
   </div>
 
-  <!-- DEBUG OVERLAY — remove once tilt is confirmed working -->
-  <div id="tilt-debug" style="position:absolute;bottom:8px;left:8px;right:8px;background:rgba(0,0,0,0.6);color:#0f0;font-family:monospace;font-size:11px;padding:6px 8px;border-radius:8px;z-index:99;line-height:1.6;pointer-events:none;">
-    waiting for motion events…
-  </div>
 </div>
 
 <!-- ═══════════ RESULTS ═══════════ -->
@@ -1293,7 +1289,6 @@ let tiltArmed       = false;
 let tiltInCooldown  = false;
 let tiltCooldownEnd = 0;
 let tiltArmEnd      = 0;
-let motionEvtCount  = 0;      // debug counter
 
 // Full reset — call once at game start
 function initTiltForGame() {
@@ -1305,7 +1300,6 @@ function initTiltForGame() {
   tiltInCooldown  = false;
   tiltCooldownEnd = 0;
   tiltArmEnd      = Date.now() + TILT_ARM_MS;
-  motionEvtCount  = 0;
 }
 
 // Called after each action — starts cooldown (buffer kept for resetBaseline)
@@ -1546,8 +1540,6 @@ function bindMotion() {
   gameState.orientationBound = true;
 }
 
-let tiltAxis = 'z';
-
 // Returns the gravity component used for tilt detection.
 // Phone held upright portrait: z ≈ -0.7 (neutral)
 // Tilt down (correct):         z ≈ +4   → negated raw drops, delta < -TILT_CORRECT_G
@@ -1557,25 +1549,7 @@ function getRaw(g) {
 }
 
 function onMotion(e) {
-  motionEvtCount++;
   const g = e.accelerationIncludingGravity;
-
-  // Update debug overlay every 10 events
-  if (motionEvtCount % 10 === 0) {
-    const dbg = document.getElementById('tilt-debug');
-    if (dbg) {
-      const gx = g ? (g.x || 0).toFixed(2) : '?';
-      const gy = g ? (g.y || 0).toFixed(2) : '?';
-      const gz = g ? (g.z || 0).toFixed(2) : '?';
-      const state = !tiltArmed ? 'ARMING' : tiltInCooldown ? 'COOLDOWN' : 'ARMED';
-      const rawNow = g ? getRaw(g) : 0;
-      const delta = tiltBaseline !== null ? (rawNow - tiltBaseline).toFixed(2) : '—';
-      dbg.textContent =
-        `events:${motionEvtCount}  axis:${tiltAxis||'?'}  state:${state}\n` +
-        `x=${gx}  y=${gy}  z=${gz}\n` +
-        `raw=${rawNow.toFixed(2)}  Δ=${delta}  base=${tiltBaseline !== null ? tiltBaseline.toFixed(2) : '—'}`;
-    }
-  }
 
   if (!gameState.active || gameState.locked) return;
   if (!g) return;
