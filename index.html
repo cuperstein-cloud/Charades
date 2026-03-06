@@ -1548,6 +1548,18 @@ function bindMotion() {
   gameState.orientationBound = true;
 }
 
+let tiltAxis = 'y';
+
+// Returns the signed gravity component to use for tilt detection.
+// Detects iOS sign inversion on first call by checking z sign.
+function getRaw(g) {
+  if (motionSign === null) {
+    // Face-up: spec/Android z ≈ -9.8, iOS z ≈ +9.8
+    motionSign = (g.z > 0) ? -1 : 1;
+  }
+  return (g.y || 0) * motionSign;
+}
+
 function onMotion(e) {
   motionEvtCount++;
   const g = e.accelerationIncludingGravity;
@@ -1556,26 +1568,23 @@ function onMotion(e) {
   if (motionEvtCount % 10 === 0) {
     const dbg = document.getElementById('tilt-debug');
     if (dbg) {
-      const yRaw = g ? (g.y || 0).toFixed(2) : 'null';
-      const zRaw = g ? (g.z || 0).toFixed(2) : 'null';
+      const gx = g ? (g.x || 0).toFixed(2) : '?';
+      const gy = g ? (g.y || 0).toFixed(2) : '?';
+      const gz = g ? (g.z || 0).toFixed(2) : '?';
       const state = !tiltArmed ? 'ARMING' : tiltInCooldown ? 'COOLDOWN' : 'ARMED';
-      const delta = (tiltBaseline !== null && g) ?
-        ((g.y || 0) * (motionSign || 1) - tiltBaseline).toFixed(2) : '—';
+      const rawNow = g ? getRaw(g) : 0;
+      const delta = tiltBaseline !== null ? (rawNow - tiltBaseline).toFixed(2) : '—';
       dbg.textContent =
-        `events:${motionEvtCount}  sign:${motionSign}  state:${state}\n` +
-        `y=${yRaw}  z=${zRaw}  Δ=${delta}  base=${tiltBaseline !== null ? tiltBaseline.toFixed(2) : '—'}`;
+        `events:${motionEvtCount}  axis:${tiltAxis||'?'}  state:${state}\n` +
+        `x=${gx}  y=${gy}  z=${gz}\n` +
+        `raw=${rawNow.toFixed(2)}  Δ=${delta}  base=${tiltBaseline !== null ? tiltBaseline.toFixed(2) : '—'}`;
     }
   }
 
   if (!gameState.active || gameState.locked) return;
   if (!g) return;
 
-  // Detect iOS vs spec sign from z. Face-up: iOS z≈+9.8, Android z≈-9.8.
-  if (motionSign === null && g.z != null && Math.abs(g.z) > 3) {
-    motionSign = g.z < 0 ? 1 : -1;
-  }
-  const sign = motionSign !== null ? motionSign : 1;
-  const raw = (g.y || 0) * sign;
+  const raw = getRaw(g);
 
   tiltRawBuf.push(raw);
   if (tiltRawBuf.length > 30) tiltRawBuf.shift();
