@@ -884,9 +884,28 @@
   </div>
 </div>
 
+<!-- Firebase Compat SDK (real-time shared data) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
 <script>
+// ── FIREBASE CONFIG ── Replace these values with your own Firebase project ────
+// Get your config: console.firebase.google.com → Project Settings → Your apps
+const firebaseConfig = {
+  apiKey:            "AIzaSyBXcqEH8Uk8ZfHbtWwXRNA5RvPq0G5Xwag",
+  authDomain:        "charades-1dfd3.firebaseapp.com",
+  projectId:         "charades-1dfd3",
+  storageBucket:     "charades-1dfd3.firebasestorage.app",
+  messagingSenderId: "589971833962",
+  appId:             "1:589971833962:web:dc9f377d9c48d882863613"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const DATA_DOC = db.collection('charades').doc('state');
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ════════════════════════════════════════
-// DATA — saved to localStorage + bundled defaults
+// DATA — synced via Firebase Firestore
 // ════════════════════════════════════════
 const DEFAULTS = [
   {
@@ -961,15 +980,7 @@ function fmtDuration(secs) {
   return (secs / 60) + ' min';
 }
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem('charades-v3');
-    if (raw) categories = JSON.parse(raw);
-  } catch(e) {}
-  if (!categories || categories.length === 0) {
-    categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
-    saveData();
-  }
+function loadSettings() {
   try {
     const rs = localStorage.getItem('charades-settings');
     if (rs) settings = { ...settings, ...JSON.parse(rs) };
@@ -977,7 +988,8 @@ function loadData() {
 }
 
 function saveData() {
-  try { localStorage.setItem('charades-v3', JSON.stringify(categories)); } catch(e) {}
+  DATA_DOC.set({ categories: categories })
+    .catch(err => console.error('Firestore save error:', err));
 }
 
 function saveSettings() {
@@ -1809,10 +1821,34 @@ function showSplash() {
 // ════════════════════════════════════════
 // BOOT
 // ════════════════════════════════════════
-try { loadData(); } catch(e) {
-  categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
-}
-renderHome();
+loadSettings();
+
+// Real-time Firestore listener — all users see changes instantly
+DATA_DOC.onSnapshot((doc) => {
+  if (doc.exists) {
+    categories = doc.data().categories || [];
+  } else {
+    // First-ever launch: seed Firestore with built-in defaults
+    categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
+    saveData();
+  }
+  renderHome();
+  if (document.getElementById('screen-admin').classList.contains('active')) {
+    renderAdmin();
+  }
+}, (err) => {
+  console.error('Firestore error:', err);
+  // Fallback to localStorage if Firestore is unreachable
+  try {
+    const raw = localStorage.getItem('charades-v3');
+    if (raw) categories = JSON.parse(raw);
+  } catch(e) {}
+  if (!categories || categories.length === 0) {
+    categories = DEFAULTS.map(d => ({ ...d, words: [...d.words] }));
+  }
+  renderHome();
+});
+
 showSplash();
 </script>
 </body>
