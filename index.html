@@ -1344,8 +1344,9 @@ function resetBaseline() {
 
 const gameState = {
   active: false,
-  words: [],
-  idx: 0,
+  deck: [],        // words not yet shown this pass
+  skipped: [],     // words passed/timed-out; recycled once deck empties
+  currentWord: null,
   correct: [],
   missed: [],
   gameSecs: 0,
@@ -1364,9 +1365,10 @@ function startGame() {
   const cat = categories.find(c => c.id === currentCatId);
   if (!cat || cat.words.length === 0) return;
 
-  // Shuffle
-  gameState.words = [...cat.words].sort(() => Math.random() - 0.5);
-  gameState.idx = 0;
+  // Shuffle all words into the deck; skipped words recycle once deck empties
+  gameState.deck = [...cat.words].sort(() => Math.random() - 0.5);
+  gameState.skipped = [];
+  gameState.currentWord = null;
   gameState.correct = [];
   gameState.missed = [];
   gameState.gameSecs = settings.gameSecs;
@@ -1430,7 +1432,20 @@ function stopGame(showResults) {
 }
 
 function displayWord() {
-  const w = gameState.words[gameState.idx % gameState.words.length];
+  // If deck is empty, recycle skipped words (shuffled); correct words never return
+  if (gameState.deck.length === 0) {
+    if (gameState.skipped.length === 0) {
+      // Every word was guessed — nothing left to show
+      document.getElementById('g-word').textContent = '🎉 All guessed!';
+      document.getElementById('g-wnum').textContent = '';
+      document.getElementById('word-bar').style.width = '0%';
+      return;
+    }
+    gameState.deck = [...gameState.skipped].sort(() => Math.random() - 0.5);
+    gameState.skipped = [];
+  }
+  gameState.currentWord = gameState.deck.shift();
+  const w = gameState.currentWord;
   const el = document.getElementById('g-word');
   el.textContent = w;
   // Adaptive font size
@@ -1488,7 +1503,7 @@ function updateWordBar() {
 function doCorrect() {
   if (!gameState.active || gameState.locked) return;
   gameState.locked = true;
-  gameState.correct.push(gameState.words[gameState.idx % gameState.words.length]);
+  gameState.correct.push(gameState.currentWord);
   document.getElementById('g-score').textContent = gameState.correct.length;
   flash('blue', '✓ Got it!');
   advance();
@@ -1497,14 +1512,14 @@ function doCorrect() {
 function doPass() {
   if (!gameState.active || gameState.locked) return;
   gameState.locked = true;
-  gameState.missed.push(gameState.words[gameState.idx % gameState.words.length]);
+  gameState.missed.push(gameState.currentWord);
+  gameState.skipped.push(gameState.currentWord);
   flash('red', '✗ Skip');
   advance();
 }
 
 function advance() {
   clearInterval(gameState.wordTimer);
-  gameState.idx++;
   onTiltAction(); // enter recovery mode — phone must return to center before re-arming
   setTimeout(() => {
     if (!gameState.active) return;
